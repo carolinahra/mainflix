@@ -66,7 +66,7 @@ export class RoundRepository {
   async members(db: Connection): Promise<Member[]> {
     return db
       .selectFrom('users')
-      .select(['id', 'name'])
+      .select(['id', 'name', 'username'])
       .where('is_admin', '=', false)
       .orderBy('id')
       .execute()

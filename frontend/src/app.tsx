@@ -583,9 +583,9 @@ export class Mainflix extends Component<Props, State> {
               return (
                 <div className={`participant ${response ? 'done' : ''}`} key={member.id}>
                   <span className={`avatar avatar-${index % 4}`} aria-hidden="true">
-                    {member.name.slice(0, 1)}
+                    {member.username.slice(0, 1)}
                   </span>
-                  <strong>{member.name}</strong>
+                  <strong>{member.username}</strong>
                   <small>
                     {response ? (response.title ?? this.t('skipLabel')) : this.t('waiting')}
                   </small>

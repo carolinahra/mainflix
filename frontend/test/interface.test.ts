@@ -21,8 +21,8 @@ test('weekly party progress counts actual responses including skips without inve
       winner: null,
       status: 'collecting',
       members: [
-        { id: 1, name: 'Leo' },
-        { id: 2, name: 'Alex' },
+        { id: 1, name: 'Leo', username: 'leo_user' },
+        { id: 2, name: 'Alex', username: 'alex_user' },
       ],
       responses: [{ user_id: 1, name: 'Leo', movie_id: null, title: null }],
     },
@@ -32,6 +32,9 @@ test('weekly party progress counts actual responses including skips without inve
   assert.match(markup, /<progress[^>]*value="1"[^>]*max="2"/)
   assert.match(markup, /Skipping/)
   assert.match(markup, /Not nominated yet/)
+  assert.match(markup, /<strong>leo_user<\/strong>/)
+  assert.match(markup, /<strong>alex_user<\/strong>/)
+  assert.doesNotMatch(markup, /<strong>Leo<\/strong>|<strong>Alex<\/strong>/)
   assert.doesNotMatch(markup, /Jamie|Sam/)
   assert.match(markup, />Skip this week</)
   app.state = {
@@ -106,7 +109,7 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
       ends_at: '2026-11-16T00:00:00Z',
       winner,
       status: 'selected',
-      members: [1, 2, 3, 4].map((id) => ({ id, name: `Friend ${id}` })),
+      members: [1, 2, 3, 4].map((id) => ({ id, name: `Friend ${id}`, username: `friend${id}` })),
       responses: [
         { user_id: 1, name: 'Friend 1', movie_id: 1, title: 'Inception' },
         { user_id: 2, name: 'Friend 2', movie_id: 2, title: 'Arrival' },

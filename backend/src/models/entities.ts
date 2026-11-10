@@ -74,6 +74,7 @@ export interface RoundResponse {
 export interface Member {
   id: number
   name: string
+  username: string
 }
 export type RoundStatus = 'collecting' | 'ready' | 'skipped' | 'selected'
 export interface RoundState extends RoundRow {

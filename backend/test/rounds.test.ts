@@ -59,6 +59,10 @@ test('four responses unlock draw, duplicate movie nominations keep separate weig
   // Index 1 must still select A: entries are A, A, B, skip, rather than deduplicated A, B.
   const rounds = TestDatabase.rounds(monday, () => 1)
   let state = await rounds.current()
+  assert.deepEqual(
+    state.members.map((member) => member.username),
+    friends.map((user) => user.username),
+  )
   await rounds.respond(friends[0]!.id, state.week, a.id)
   await rounds.respond(friends[1]!.id, state.week, a.id)
   await rounds.respond(friends[2]!.id, state.week, b.id)
