@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:17.4-alpine3.21
+    environment:
+      POSTGRES_USER: mainflix
+      POSTGRES_PASSWORD: mainflix
+      POSTGRES_DB: mainflix
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - mainflix-db:/var/lib/postgresql/data
+volumes:
+  mainflix-db:

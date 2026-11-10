@@ -1,0 +1,27 @@
+{
+  "name": "mainflix",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace backend",
+    "build": "npm run build --workspaces",
+    "test": "npm test --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "db:migrate": "npm run db:migrate --workspace backend",
+    "user:create": "npm run user:create --workspace backend --",
+    "user:reset": "npm run user:reset --workspace backend --",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "format": "prettier --write backend/src backend/test frontend/src frontend/test",
+    "format:check": "prettier --check backend/src backend/test frontend/src frontend/test"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  }
+}
