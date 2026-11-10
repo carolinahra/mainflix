@@ -498,7 +498,16 @@ export class Mainflix extends Component<Props, State> {
     if (!entries.length || winnerIndex < 0) return null
     const wedges = Array.from({ length: 8 }, (_, index) => entries[index % entries.length]!)
     const angle: number = 360 / wedges.length
-    const colors: string[] = ['#326b50', '#67508a', '#285c80', '#975132']
+    const colors: string[] = [
+      '#ffca3a',
+      '#ff6b8a',
+      '#55ddeb',
+      '#a8f05a',
+      '#bd8aff',
+      '#ff934f',
+      '#62a8ff',
+      '#ff82d2',
+    ]
     const sectors: string = wedges
       .map(
         (_, index) =>

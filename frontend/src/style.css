@@ -636,55 +636,68 @@ dialog small {
 }
 .roulette {
   overflow: hidden;
-  border: 1px solid #a4ee5733;
-  border-radius: 18px;
-  padding: 1.5rem 1rem 2rem;
+  border: 3px solid #39304e;
+  border-radius: 24px;
+  padding: 1.5rem 1.25rem 2.5rem;
   margin-top: 1rem;
-  background: radial-gradient(ellipse at center, #a4ee5714, transparent 70%), #15181b;
+  background:
+    radial-gradient(circle, #ffffff12 1.5px, transparent 1.5px) 0 0 / 16px 16px,
+    linear-gradient(145deg, #2a2347, #171421);
   text-align: center;
+}
+.roulette > .eyebrow {
+  display: inline-block;
+  border: 3px solid #191323;
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  background: #ffca3a;
+  color: #191323;
+  box-shadow: 4px 4px 0 #191323;
+  transform: rotate(-2deg);
 }
 .roulette-stage {
   position: relative;
-  width: min(100%, 400px);
-  margin: 1.5rem auto 0;
-  border: 8px solid #30363a;
+  width: min(calc(100% - 12px), 400px);
+  margin: 2rem auto 0;
+  border: 10px solid #ffca3a;
   border-radius: 50%;
   box-shadow:
-    0 0 0 1px #ffffff26,
-    0 18px 45px #0008,
-    0 0 45px #a4ee5712;
+    0 0 0 4px #191323,
+    0 8px 0 4px #191323,
+    0 20px 35px #0006;
 }
 .roulette-stage::before {
   content: '';
   position: absolute;
   z-index: 1;
-  top: -13px;
+  top: -23px;
   left: 50%;
   transform: translateX(-50%);
-  border-left: 13px solid transparent;
-  border-right: 13px solid transparent;
-  border-top: 30px solid var(--green);
-  filter: drop-shadow(0 3px 3px #0009);
+  border-left: 15px solid transparent;
+  border-right: 15px solid transparent;
+  border-top: 36px solid #fff2a8;
+  filter: drop-shadow(2px 0 0 #191323) drop-shadow(-2px 0 0 #191323) drop-shadow(0 3px 0 #191323);
 }
 .roulette-wheel {
   display: block;
   width: 100%;
   aspect-ratio: 1;
   border-radius: 50%;
+  outline: 3px solid #191323;
   animation: roulette-spin 4s cubic-bezier(0.12, 0.75, 0.15, 1) both;
 }
 .roulette-wheel text {
-  fill: #fff;
-  font-family: inherit;
+  fill: #191323;
+  font-family: 'Trebuchet MS', 'Arial Rounded MT Bold', system-ui, sans-serif;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 900;
   paint-order: stroke;
-  stroke: #0003;
-  stroke-width: 2px;
+  stroke: #ffffff55;
+  stroke-width: 0.75px;
 }
 .roulette-divider {
-  stroke: #101113;
-  stroke-width: 4px;
+  stroke: #191323;
+  stroke-width: 4.5px;
 }
 .roulette-hub {
   position: absolute;
@@ -695,12 +708,14 @@ dialog small {
   place-items: center;
   width: 64px;
   height: 64px;
-  border: 5px solid #343c32;
+  border: 5px solid #191323;
   border-radius: 50%;
-  background: linear-gradient(145deg, #b7ff6b, #74ad38);
-  color: #1e3013;
+  background: #ffca3a;
+  color: #191323;
   font-size: 1.7rem;
-  box-shadow: 0 4px 12px #0006;
+  box-shadow:
+    inset 0 3px 0 #fff7,
+    0 5px 0 #191323;
 }
 .winner > button {
   margin-top: 1rem;
