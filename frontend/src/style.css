@@ -682,6 +682,10 @@ dialog small {
   stroke: #0003;
   stroke-width: 2px;
 }
+.roulette-divider {
+  stroke: #101113;
+  stroke-width: 4px;
+}
 .roulette-hub {
   position: absolute;
   top: 50%;

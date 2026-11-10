@@ -92,6 +92,7 @@ test('movie roulette keeps weighted nominations, skips abstentions and points to
   assert.ok(wheel, 'Nominated titles must appear on a spinning wheel')
   assert.equal(wheel.match(/<title>Arrival<\/title>/g)?.length, 2)
   assert.match(wheel, /<title>Inception<\/title>/)
+  assert.equal(wheel.match(/class="roulette-divider"/g)?.length, 3)
   assert.doesNotMatch(wheel, /Skipping|Friend 4/)
   // Three entries: Arrival's first sector is centered at 180°, which ends at the top.
   assert.match(wheel, /transform:rotate\(1980deg\)/)

@@ -520,6 +520,14 @@ export class Mainflix extends Component<Props, State> {
               return (
                 <g key={entry.user_id}>
                   <title>{title}</title>
+                  <line
+                    className="roulette-divider"
+                    x1="160"
+                    y1="160"
+                    x2="160"
+                    y2="0"
+                    transform={`rotate(${index * angle} 160 160)`}
+                  />
                   <text
                     x="160"
                     y="64"
