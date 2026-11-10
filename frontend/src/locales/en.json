@@ -15,6 +15,8 @@
   "nominate": "Nominate",
   "skip": "Skip this week",
   "draw": "Draw this week's movie",
+  "drawing": "Spinning the movie roulette…",
+  "replayRoulette": "Replay roulette",
   "collecting": "Make your pick",
   "ready": "Everyone is ready. Time to draw!",
   "skipped": "Everyone skipped this week",

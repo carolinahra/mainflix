@@ -40,6 +40,7 @@ interface State {
 }
 export class Mainflix extends Component<Props, State> {
   private readonly dialog = createRef<HTMLDialogElement>()
+  private readonly roulette = createRef<HTMLDivElement>()
   private poll: ReturnType<typeof setInterval> | undefined
   private debounce: ReturnType<typeof setTimeout> | undefined
   private spinTimer: ReturnType<typeof setTimeout> | undefined
@@ -241,10 +242,20 @@ export class Mainflix extends Component<Props, State> {
         `/rounds/${week}/draw`,
         'POST',
       )
-      this.setState({ round, spinning: true })
-      this.spinTimer = setTimeout((): void => {
-        this.setState({ spinning: false })
-      }, 1800)
+      clearTimeout(this.spinTimer)
+      const reducedMotion: boolean = matchMedia('(prefers-reduced-motion: reduce)').matches
+      this.setState({ round, spinning: true }, (): void => {
+        this.roulette.current?.scrollIntoView({
+          block: 'center',
+          behavior: reducedMotion ? 'auto' : 'smooth',
+        })
+      })
+      this.spinTimer = setTimeout(
+        (): void => {
+          this.setState({ spinning: false })
+        },
+        reducedMotion ? 0 : 4400,
+      )
     })
   }
   private submitMovie(event: FormEvent<HTMLFormElement>): void {
@@ -481,6 +492,53 @@ export class Mainflix extends Component<Props, State> {
       </section>
     )
   }
+  private renderRoulette(round: Serialized<RoundState>): ReactNode {
+    const entries = round.responses.filter((response) => response.movie_id !== null)
+    const winnerIndex = entries.findIndex((response) => response.movie_id === round.winner_id)
+    if (!entries.length || winnerIndex < 0) return null
+    const angle: number = 360 / entries.length
+    const colors: string[] = ['#326b50', '#67508a', '#285c80', '#975132']
+    const sectors: string = entries
+      .map((_, index) => `${colors[index]} ${index * angle}deg ${(index + 1) * angle}deg`)
+      .join(', ')
+    const rotation: number = 2160 - (winnerIndex + 0.5) * angle
+    return (
+      <div className="roulette" ref={this.roulette} role="status" aria-label={this.t('drawing')}>
+        <p className="eyebrow">{this.t('drawing')}</p>
+        <div className="roulette-stage">
+          <svg
+            className="roulette-wheel"
+            viewBox="0 0 320 320"
+            aria-hidden="true"
+            style={{
+              background: `conic-gradient(${sectors})`,
+              transform: `rotate(${rotation}deg)`,
+            }}
+          >
+            {entries.map((entry, index) => {
+              const title: string = entry.title ?? ''
+              return (
+                <g key={entry.user_id}>
+                  <title>{title}</title>
+                  <text
+                    x="160"
+                    y="64"
+                    textAnchor="middle"
+                    transform={`rotate(${(index + 0.5) * angle} 160 160)`}
+                  >
+                    {title.length > 22 ? `${title.slice(0, 21)}…` : title}
+                  </text>
+                </g>
+              )
+            })}
+          </svg>
+          <div className="roulette-hub" aria-hidden="true">
+            ★
+          </div>
+        </div>
+      </div>
+    )
+  }
   private renderWeek(): ReactNode {
     const round: Serialized<RoundState> | null = this.state.round
     if (!round) return <p>{this.t('loading')}</p>
@@ -526,7 +584,15 @@ export class Mainflix extends Component<Props, State> {
           <div className="round-heading">
             <div>
               <p className="eyebrow">{round.week}</p>
-              <h2>{this.t(round.status === 'selected' ? 'selected' : round.status)}</h2>
+              <h2>
+                {this.t(
+                  this.state.spinning
+                    ? 'drawing'
+                    : round.status === 'selected'
+                      ? 'selected'
+                      : round.status,
+                )}
+              </h2>
             </div>
             <p className="muted">{this.t('resetTime')}</p>
           </div>
@@ -544,19 +610,14 @@ export class Mainflix extends Component<Props, State> {
               {this.t('draw')}
             </button>
           )}
-          {this.state.spinning && (
-            <div className="roulette" aria-live="polite">
-              <div className="reel">
-                {round.responses
-                  .filter((r) => r.movie_id)
-                  .map((r) => (
-                    <span key={r.user_id}>{r.title}</span>
-                  ))}
-              </div>
-            </div>
-          )}
+          {this.state.spinning && this.renderRoulette(round)}
           {round.winner && !this.state.spinning && (
-            <div className="winner">{this.renderCard(round.winner)}</div>
+            <div className="winner" role="status">
+              {this.renderCard(round.winner)}
+              <button disabled={this.state.busy} onClick={this.draw.bind(this)}>
+                {this.t('replayRoulette')}
+              </button>
+            </div>
           )}
         </section>
         {this.renderSearch()}
