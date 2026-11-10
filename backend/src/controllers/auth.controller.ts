@@ -57,7 +57,7 @@ export class AuthController {
     const body = z
       .object({
         currentPassword: z.string().min(1).max(128),
-        password: z.string().min(12).max(128),
+        password: z.string().min(6).max(128),
       })
       .strict()
       .parse(req.body)
@@ -70,7 +70,7 @@ export class AuthController {
     const body = z
       .object({
         token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-        password: z.string().min(12).max(128),
+        password: z.string().min(6).max(128),
       })
       .strict()
       .parse(req.body)

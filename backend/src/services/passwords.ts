@@ -3,7 +3,7 @@ import { InvalidPasswordException } from '../shared/exceptions/index.js'
 export class Passwords {
   private readonly dummyHash: string = `scrypt$00000000000000000000000000000000$${'00'.repeat(64)}`
   validate(password: string): void {
-    if (typeof password !== 'string' || password.length < 12 || password.length > 128)
+    if (typeof password !== 'string' || password.length < 6 || password.length > 128)
       throw new InvalidPasswordException()
   }
   private derive(password: string, salt: string): Promise<Buffer> {

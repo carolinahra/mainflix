@@ -11,7 +11,7 @@ export class PasswordPrompt {
       throw new Error(
         'Provide MAINFLIX_PASSWORD through the environment for noninteractive provisioning',
       )
-    process.stdout.write('Password (12–128 characters): ')
+    process.stdout.write('Password (6–128 characters): ')
     return new Promise((resolve, reject): void => {
       let password: string = ''
       process.stdin.setRawMode(true)

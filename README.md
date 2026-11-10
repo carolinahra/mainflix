@@ -25,7 +25,7 @@ npm run user:create -- --username friend4 --name Friend4
 
 Usernames are required, unique, case-insensitive, and contain 3–32 letters, numbers, or underscores. Email is optional: add `--email you@example.com` when creating an account to enable email login as well. Supplied emails are validated and unique. Sign in with your username or email and password. Migrations preserve existing accounts, passwords, and sessions.
 
-The provisioning command prompts for a hidden password (12–128 characters). For noninteractive provisioning, set `MAINFLIX_PASSWORD` in the process environment; do not put passwords in command arguments, commits, or shared logs. Exactly four accounts and at most one admin are allowed. Create your admin first.
+The provisioning command prompts for a hidden password (6–128 characters). For noninteractive provisioning, set `MAINFLIX_PASSWORD` in the process environment; do not put passwords in command arguments, commits, or shared logs. Exactly four accounts and at most one admin are allowed. Create your admin first.
 
 Start the applications in separate terminals:
 

@@ -35,6 +35,32 @@ class HttpFixture {
   }
 }
 
+test('six-character passwords work for provisioning, login, password changes, and resets', async () => {
+  const f = new HttpFixture()
+  const user = await f.container.userService.create(null, 'shortpass', 'Short password', 'abcdef')
+  const cookie = await f.login('shortpass', 'abcdef')
+  const app = f.container.application.app
+  await request(app)
+    .put('/api/auth/password')
+    .set('Cookie', cookie)
+    .set('Origin', 'http://localhost:5173')
+    .send({ currentPassword: 'abcdef', password: 'abcdefghi' })
+    .expect(204)
+  await f.login('shortpass', 'abcdefghi')
+  const reset = await f.container.userService.issueReset(user.id)
+  await request(app)
+    .post('/api/auth/reset')
+    .set('Origin', 'http://localhost:5173')
+    .send({ token: reset.token, password: 'abcde' })
+    .expect(400)
+  await request(app)
+    .post('/api/auth/reset')
+    .set('Origin', 'http://localhost:5173')
+    .send({ token: reset.token, password: 'ghijkl' })
+    .expect(204)
+  await f.login('shortpass', 'ghijkl')
+})
+
 test('login accepts usernames through the identifier field and validates the request', async () => {
   const f = new HttpFixture()
   await f.container.userService.create(

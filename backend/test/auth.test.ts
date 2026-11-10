@@ -9,6 +9,15 @@ import { pool, TestDatabase } from './helpers.js'
 beforeEach(() => TestDatabase.reset())
 after(() => pool.end())
 const password = 'A long test password!'
+test('password length accepts 6 through 128 characters and rejects values outside that range', () => {
+  for (const length of [6, 9, 128])
+    assert.doesNotThrow(() => TestDatabase.passwords.validate('a'.repeat(length)))
+  for (const length of [0, 5, 129])
+    assert.throws(() => TestDatabase.passwords.validate('a'.repeat(length)), {
+      code: 'INVALID_PASSWORD',
+    })
+})
+
 test('accounts without email can share no email, sign in by unique username, and reset passwords', async () => {
   const { auth } = await TestDatabase.auth()
   const first = await auth.create(null, 'first_user', 'First', password)

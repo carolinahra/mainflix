@@ -901,7 +901,7 @@ export class Mainflix extends Component<Props, State> {
               <input
                 name="password"
                 type="password"
-                minLength={this.state.resetToken ? 12 : 1}
+                minLength={this.state.resetToken ? 6 : 1}
                 maxLength={128}
                 autoComplete={this.state.resetToken ? 'new-password' : 'current-password'}
                 required
@@ -1007,7 +1007,7 @@ export class Mainflix extends Component<Props, State> {
                       name="password"
                       type="password"
                       autoComplete="new-password"
-                      minLength={12}
+                      minLength={6}
                       maxLength={128}
                       required
                     />
