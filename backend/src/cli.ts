@@ -62,7 +62,7 @@ export class Cli {
     if (command === 'migrate') {
       await this.container.database.migrate(
         await Promise.all(
-          ['001_initial.sql', '002_usernames.sql'].map((file) =>
+          ['001_initial.sql', '002_usernames.sql', '003_optional_email.sql'].map((file) =>
             readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8'),
           ),
         ),
@@ -70,20 +70,24 @@ export class Cli {
       console.log('Migrations applied')
       return
     }
-    if (command === 'create-user' && values.email && values.username && values.name) {
+    if (command === 'create-user' && values.username && values.name) {
       const user: User = await this.container.userService.create(
-        values.email,
+        values.email ?? null,
         values.username,
         values.name,
         await this.prompt.read(),
         values.admin,
       )
-      console.log(`Created ${user.username} (${user.email})${user.is_admin ? ' (admin)' : ''}`)
+      console.log(
+        `Created ${user.username}${user.email ? ` (${user.email})` : ''}${user.is_admin ? ' (admin)' : ''}`,
+      )
       return
     }
-    if (command === 'reset-password' && values.email) {
-      const user: User | undefined = (await this.container.userService.list()).find(
-        (u) => u.email === values.email?.trim().toLowerCase(),
+    if (command === 'reset-password' && Boolean(values.username) !== Boolean(values.email)) {
+      const user: User | undefined = (await this.container.userService.list()).find((u) =>
+        values.username
+          ? u.username === values.username.trim().toLowerCase()
+          : u.email === values.email?.trim().toLowerCase(),
       )
       if (!user) throw new Error('User not found')
       const reset: ResetToken = await this.container.userService.issueReset(user.id)
@@ -93,7 +97,7 @@ export class Cli {
       return
     }
     throw new Error(
-      'Usage: migrate | create-user --email EMAIL --username USERNAME --name NAME [--admin] | reset-password --email EMAIL',
+      'Usage: migrate | create-user --username USERNAME --name NAME [--email EMAIL] [--admin] | reset-password (--username USERNAME | --email EMAIL)',
     )
   }
   static async main(): Promise<void> {

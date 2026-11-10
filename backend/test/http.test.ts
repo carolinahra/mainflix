@@ -20,11 +20,11 @@ class HttpFixture {
     this.container.clock = new Clock(() => new Date('2026-11-09T12:00Z'))
     this.container.tmdb = new Tmdb('')
   }
-  async login(email: string, password: string = 'A long test password!'): Promise<string> {
+  async login(identifier: string, password: string = 'A long test password!'): Promise<string> {
     const response = await request(this.container.application.app)
       .post('/api/auth/login')
       .set('Origin', 'http://localhost:5173')
-      .send({ email, password })
+      .send({ identifier, password })
     assert.equal(response.status, 200)
     const cookies: unknown = response.headers['set-cookie']
     assert.ok(Array.isArray(cookies))
@@ -112,8 +112,8 @@ test('only admins approve movies, reset links use configured origin, and review 
     'Friend',
     'A long test password!',
   )
-  const adminCookie = await f.login(admin.email)
-  const friendCookie = await f.login(friend.email)
+  const adminCookie = await f.login(admin.username)
+  const friendCookie = await f.login(friend.username)
   const a = await TestDatabase.movie()
   const app = f.container.application.app
   const blocked = await request(app)
@@ -164,7 +164,7 @@ test('all four users see the same draw through the API and can review after pers
       ),
     ),
   )
-  const cookies = await Promise.all(friends.map((u) => f.login(u.email)))
+  const cookies = await Promise.all(friends.map((u) => f.login(u.username)))
   const app = f.container.application.app
   const a = await TestDatabase.movie('A')
   const b = await TestDatabase.movie('B')

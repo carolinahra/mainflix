@@ -13,7 +13,7 @@ export class UserRepository {
       .execute()
   }
   async create(
-    email: string,
+    email: string | null,
     username: string,
     name: string,
     passwordHash: string,

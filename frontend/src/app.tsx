@@ -726,7 +726,7 @@ export class Mainflix extends Component<Props, State> {
           <article className="account" key={user.id}>
             <strong>{user.name}</strong>
             <span>@{user.username}</span>
-            <span>{user.email}</span>
+            {user.email && <span>{user.email}</span>}
             <button disabled={this.state.busy} onClick={(): void => this.resetLink(user.id)}>
               {this.t('resetLink')}
             </button>

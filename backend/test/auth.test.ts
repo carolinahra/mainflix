@@ -9,6 +9,49 @@ import { pool, TestDatabase } from './helpers.js'
 beforeEach(() => TestDatabase.reset())
 after(() => pool.end())
 const password = 'A long test password!'
+test('accounts without email can share no email, sign in by unique username, and reset passwords', async () => {
+  const { auth } = await TestDatabase.auth()
+  const first = await auth.create(null, 'first_user', 'First', password)
+  const second = await auth.create(null, 'second_user', 'Second', password)
+  assert.equal(first.email, null)
+  assert.equal(second.email, null)
+  const session = await auth.login(' FIRST_USER ', password)
+  assert.equal(session.user.id, first.id)
+  assert.equal((await auth.user(session.token))?.email, null)
+  await assert.rejects(auth.create(null, 'FIRST_USER', 'Duplicate', password), {
+    code: 'USERNAME_EXISTS',
+  })
+  const reset = await auth.issueReset(first.id)
+  await auth.reset(reset.token, 'Replacement password!')
+  assert.equal((await auth.login('first_user', 'Replacement password!')).user.id, first.id)
+})
+
+test('provided emails remain validated, normalized, and unique', async () => {
+  const { auth } = await TestDatabase.auth()
+  for (const email of ['', 'invalid'])
+    await assert.rejects(auth.create(email, 'other', 'Other', password))
+  await assert.rejects(auth.create(' ADMIN@EXAMPLE.COM ', 'other', 'Other', password), {
+    code: 'EMAIL_EXISTS',
+  })
+})
+
+test('optional email migration preserves existing accounts and sessions and runs repeatedly', async () => {
+  const { auth, user } = await TestDatabase.auth()
+  const session = await auth.login('admin', password)
+  await pool.query('ALTER TABLE users ALTER COLUMN email SET NOT NULL')
+  await pool.query('DELETE FROM schema_migrations WHERE version = 3')
+  const sources = await Promise.all(
+    ['001_initial.sql', '002_usernames.sql', '003_optional_email.sql'].map((file) =>
+      readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8'),
+    ),
+  )
+  await TestDatabase.database.migrate(sources)
+  await TestDatabase.database.migrate(sources)
+  assert.deepEqual((await auth.login('admin@example.com', password)).user, user)
+  assert.deepEqual(await auth.user(session.token), user)
+  assert.equal((await auth.create(null, 'no_email', 'No email', password)).email, null)
+})
+
 test('username login is normalized and returns the username in the session', async () => {
   const { auth, user } = await TestDatabase.auth()
   const session = await auth.login(' ADMIN ', password)
@@ -46,11 +89,12 @@ test('username and email login share the account rate limit', async () => {
 
 test('username migration preserves existing accounts and can run repeatedly', async () => {
   const { auth, user } = await TestDatabase.auth()
+  assert.ok(user.email)
   const session = await auth.login(user.email, password)
   await pool.query('ALTER TABLE users DROP COLUMN username')
   await pool.query('DELETE FROM schema_migrations WHERE version = 2')
   const sources = await Promise.all(
-    ['001_initial.sql', '002_usernames.sql'].map((file) =>
+    ['001_initial.sql', '002_usernames.sql', '003_optional_email.sql'].map((file) =>
       readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8'),
     ),
   )
@@ -114,7 +158,7 @@ test('reset tokens expire, are single-use under concurrency and revoke existing 
 
 test('password changes require the old password and revoke sessions/reset links', async () => {
   const { auth, user } = await TestDatabase.auth()
-  const session = await auth.login(user.email, password)
+  const session = await auth.login(user.username, password)
   const reset = await auth.issueReset(user.id)
   await assert.rejects(auth.changePassword(user.id, 'wrong', 'Replacement password!'), {
     code: 'INVALID_CREDENTIALS',

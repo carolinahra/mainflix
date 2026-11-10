@@ -26,13 +26,13 @@ export class UserService {
     return email.trim().toLowerCase()
   }
   async create(
-    email: string,
+    email: string | null,
     username: string,
     name: string,
     password: string,
     admin: boolean = false,
   ): Promise<User> {
-    email = z.string().email().max(254).parse(this.normalizeEmail(email))
+    email = email === null ? null : z.string().email().max(254).parse(this.normalizeEmail(email))
     username = z
       .string()
       .regex(/^[a-z0-9_]{3,32}$/)
@@ -43,7 +43,8 @@ export class UserService {
       await this.database.lockUsers(db)
       const existing: User[] = await this.repository.list(db)
       if (existing.length >= 4) throw new GroupFullException()
-      if (existing.some((u) => u.email === email)) throw new EmailExistsException()
+      if (email !== null && existing.some((u) => u.email === email))
+        throw new EmailExistsException()
       if (existing.some((u) => u.username === username)) throw new UsernameExistsException()
       if (admin && existing.some((u) => u.is_admin)) throw new AdminExistsException()
       return this.repository.create(email, username, name, hash, admin, db)

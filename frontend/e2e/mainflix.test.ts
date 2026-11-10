@@ -28,7 +28,7 @@ class BrowserFixture {
     assert.ok(result.rows[0]?.name.endsWith('_test'), 'Refusing to reset a non-test database')
     await this.database.migrate(
       await Promise.all(
-        ['001_initial.sql', '002_usernames.sql'].map((file) =>
+        ['001_initial.sql', '002_usernames.sql', '003_optional_email.sql'].map((file) =>
           readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8'),
         ),
       ),

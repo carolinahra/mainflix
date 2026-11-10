@@ -4,7 +4,7 @@ type Timestamp = ColumnType<Date, Date | undefined, Date>
 
 interface UserTableDef {
   id: GeneratedAlways<number>
-  email: string
+  email: string | null
   username: string
   password_hash: string
   name: string

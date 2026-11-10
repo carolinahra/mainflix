@@ -17,13 +17,13 @@ npm ci
 cp .env.example .env
 docker compose up -d db
 npm run db:migrate
-npm run user:create -- --email you@example.com --username you --name You --admin
-npm run user:create -- --email friend2@example.com --username friend2 --name Friend2
-npm run user:create -- --email friend3@example.com --username friend3 --name Friend3
-npm run user:create -- --email friend4@example.com --username friend4 --name Friend4
+npm run user:create -- --username you --name You --admin
+npm run user:create -- --username friend2 --name Friend2
+npm run user:create -- --username friend3 --name Friend3
+npm run user:create -- --username friend4 --name Friend4
 ```
 
-Usernames are unique, case-insensitive, and contain 3–32 letters, numbers, or underscores. Sign in with your username or email and password. The username migration assigns existing accounts `user<ID>` (for example, `user1`) and preserves their email login, passwords, and sessions.
+Usernames are required, unique, case-insensitive, and contain 3–32 letters, numbers, or underscores. Email is optional: add `--email you@example.com` when creating an account to enable email login as well. Supplied emails are validated and unique. Sign in with your username or email and password. Migrations preserve existing accounts, passwords, and sessions.
 
 The provisioning command prompts for a hidden password (12–128 characters). For noninteractive provisioning, set `MAINFLIX_PASSWORD` in the process environment; do not put passwords in command arguments, commits, or shared logs. Exactly four accounts and at most one admin are allowed. Create your admin first.
 
@@ -79,7 +79,7 @@ Users can change a known password in the UI. When a password is forgotten, the a
 If the admin is locked out:
 
 ```bash
-npm run user:reset -- --email you@example.com
+npm run user:reset -- --username you
 ```
 
 Run this locally with the target database credentials. It prints a private reset link using `APP_ORIGIN`; treat the output as a secret. No email or paid domain is required. Login, password-change, and reset attempts are rate-limited in PostgreSQL so limits also work across serverless instances.

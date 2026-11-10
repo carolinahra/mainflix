@@ -1,6 +1,6 @@
 export interface User {
   id: number
-  email: string
+  email: string | null
   username: string
   name: string
   is_admin: boolean

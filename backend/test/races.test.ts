@@ -98,7 +98,7 @@ test('queued login before reset cannot leave an old-password session alive', asy
   let login: ReturnType<typeof auth.login> | undefined
   let redeem: Promise<void> | undefined
   try {
-    login = auth.login(user.email, 'A long test password!')
+    login = auth.login(user.username, 'A long test password!')
     await barrier.waiting(1)
     redeem = auth.reset(reset.token, 'Replacement password!')
     await barrier.waiting(2)
@@ -119,7 +119,7 @@ test('queued reset before login makes the old password fail under concurrent req
   try {
     redeem = auth.reset(reset.token, 'Replacement password!')
     await barrier.waiting(1)
-    login = auth.login(user.email, 'A long test password!').catch((error: unknown) => error)
+    login = auth.login(user.username, 'A long test password!').catch((error: unknown) => error)
     await barrier.waiting(2)
   } finally {
     await barrier.release()
