@@ -676,7 +676,7 @@ dialog small {
 .roulette-wheel text {
   fill: #fff;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   paint-order: stroke;
   stroke: #0003;

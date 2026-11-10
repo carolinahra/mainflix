@@ -496,10 +496,14 @@ export class Mainflix extends Component<Props, State> {
     const entries = round.responses.filter((response) => response.movie_id !== null)
     const winnerIndex = entries.findIndex((response) => response.movie_id === round.winner_id)
     if (!entries.length || winnerIndex < 0) return null
-    const angle: number = 360 / entries.length
+    const wedges = Array.from({ length: 8 }, (_, index) => entries[index % entries.length]!)
+    const angle: number = 360 / wedges.length
     const colors: string[] = ['#326b50', '#67508a', '#285c80', '#975132']
-    const sectors: string = entries
-      .map((_, index) => `${colors[index]} ${index * angle}deg ${(index + 1) * angle}deg`)
+    const sectors: string = wedges
+      .map(
+        (_, index) =>
+          `${colors[index % colors.length]} ${index * angle}deg ${(index + 1) * angle}deg`,
+      )
       .join(', ')
     const rotation: number = 2160 - (winnerIndex + 0.5) * angle
     return (
@@ -515,10 +519,10 @@ export class Mainflix extends Component<Props, State> {
               transform: `rotate(${rotation}deg)`,
             }}
           >
-            {entries.map((entry, index) => {
+            {wedges.map((entry, index) => {
               const title: string = entry.title ?? ''
               return (
-                <g key={entry.user_id}>
+                <g key={index}>
                   <title>{title}</title>
                   <line
                     className="roulette-divider"
@@ -529,12 +533,15 @@ export class Mainflix extends Component<Props, State> {
                     transform={`rotate(${index * angle} 160 160)`}
                   />
                   <text
-                    x="160"
-                    y="64"
-                    textAnchor="middle"
-                    transform={`rotate(${(index + 0.5) * angle} 160 160)`}
+                    x="298"
+                    y="160"
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                    textLength={title.length > 14 ? 100 : undefined}
+                    lengthAdjust="spacingAndGlyphs"
+                    transform={`rotate(${(index + 0.5) * angle - 90} 160 160)`}
                   >
-                    {title.length > 22 ? `${title.slice(0, 21)}…` : title}
+                    {title.length > 18 ? `${title.slice(0, 17)}…` : title}
                   </text>
                 </g>
               )

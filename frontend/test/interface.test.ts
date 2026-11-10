@@ -48,7 +48,7 @@ test('signed out users see the localized cinematic welcome and accessible sign i
   assert.doesNotMatch(markup, /<progress/)
 })
 
-test('movie roulette keeps weighted nominations, skips abstentions and points to the saved winner', () => {
+test('eight-wedge roulette repeats nominations, skips abstentions and points to the saved winner', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
   const winner = {
@@ -90,12 +90,12 @@ test('movie roulette keeps weighted nominations, skips abstentions and points to
   const markup = renderToStaticMarkup(app.render())
   const wheel = markup.match(/<svg class="roulette-wheel"[\s\S]*?<\/svg>/)?.[0]
   assert.ok(wheel, 'Nominated titles must appear on a spinning wheel')
-  assert.equal(wheel.match(/<title>Arrival<\/title>/g)?.length, 2)
-  assert.match(wheel, /<title>Inception<\/title>/)
-  assert.equal(wheel.match(/class="roulette-divider"/g)?.length, 3)
+  assert.equal(wheel.match(/<title>Arrival<\/title>/g)?.length, 5)
+  assert.equal(wheel.match(/<title>Inception<\/title>/g)?.length, 3)
+  assert.equal(wheel.match(/class="roulette-divider"/g)?.length, 8)
   assert.doesNotMatch(wheel, /Skipping|Friend 4/)
-  // Three entries: Arrival's first sector is centered at 180°, which ends at the top.
-  assert.match(wheel, /transform:rotate\(1980deg\)/)
+  // Arrival's first 45° wedge is centered at 67.5°, which ends at the top.
+  assert.match(wheel, /transform:rotate\(2092.5deg\)/)
   assert.doesNotMatch(markup, /class="winner"/)
   app.state = { ...app.state, spinning: false }
   assert.match(renderToStaticMarkup(app.render()), /Replay roulette/)
@@ -109,6 +109,19 @@ test('movie roulette keeps weighted nominations, skips abstentions and points to
     },
   }
   const solo = renderToStaticMarkup(app.render())
-  assert.match(solo, /transform:rotate\(1980deg\)/)
-  assert.doesNotMatch(solo, /NaN|Infinity/)
+  assert.equal(solo.match(/<title>Arrival<\/title>/g)?.length, 8)
+  assert.equal(solo.match(/class="roulette-divider"/g)?.length, 8)
+  assert.match(solo, /transform:rotate\(2137.5deg\)/)
+  assert.doesNotMatch(solo, /undefined|NaN|Infinity/)
+  app.state = {
+    ...app.state,
+    round: {
+      ...app.state.round!,
+      winner: { ...winner, title: 'The Grand Budapest Hotel' },
+      responses: [{ user_id: 2, name: 'Friend 2', movie_id: 2, title: 'The Grand Budapest Hotel' }],
+    },
+  }
+  const longTitle = renderToStaticMarkup(app.render())
+  assert.equal(longTitle.match(/<title>The Grand Budapest Hotel<\/title>/g)?.length, 8)
+  assert.equal(longTitle.match(/textLength="100"/g)?.length, 8)
 })

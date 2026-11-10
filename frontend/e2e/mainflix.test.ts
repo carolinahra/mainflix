@@ -124,6 +124,10 @@ test(
         'Smoke Film A',
         'Smoke Film B',
         'Smoke Film B',
+        'Smoke Film A',
+        'Smoke Film A',
+        'Smoke Film B',
+        'Smoke Film B',
       ])
       const start = await wheel.evaluate((element) => getComputedStyle(element).transform)
       await admin.waitForTimeout(200)
