@@ -118,9 +118,7 @@ Pagination defaults to 30, maximum 100. Reviews are plain text, maximum 10000 ch
 Use a **separate disposable PostgreSQL database whose name ends in `_test`**. Tests refuse other names and never read `DATABASE_URL`. They reset the test database between tests.
 
 ```bash
-docker run -d --rm --name mainflix-backend-test \
-  -e POSTGRES_USER=mainflix -e POSTGRES_PASSWORD=mainflix -e POSTGRES_DB=mainflix_test \
-  -p 127.0.0.1:55433:5432 postgres:17.4-alpine3.21
+docker compose up -d --wait db-test
 npm test
 npm run typecheck
 npm run build
@@ -174,7 +172,7 @@ The E2E fixture resets only `E2E_DATABASE_URL` (default `mainflix_smoke_test` on
 
 ```bash
 # Create this once in the disposable test container:
-docker exec mainflix-backend-test createdb -U mainflix mainflix_smoke_test
+docker compose exec db-test createdb -U mainflix mainflix_smoke_test
 
 # Terminal 1:
 DATABASE_URL=postgres://mainflix:mainflix@localhost:55433/mainflix_smoke_test npm run dev:backend
