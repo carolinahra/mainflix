@@ -177,18 +177,36 @@ test('password changes require the old password and revoke sessions/reset links'
   await assert.rejects(auth.reset(reset.token, password), { code: 'INVALID_RESET_TOKEN' })
 })
 
-test('provisioning enforces four accounts and one admin, including concurrent creation', async () => {
+test('provisioning allows four voting profiles plus one admin, including concurrent creation', async () => {
   const { auth } = await TestDatabase.auth()
   await assert.rejects(auth.create('other@example.com', 'other', 'Admin', password, true), {
     code: 'ADMIN_EXISTS',
   })
   const results = await Promise.allSettled(
-    [2, 3, 4, 5].map((n) =>
+    [2, 3, 4, 5, 6].map((n) =>
       auth.create(`friend${n}@example.com`, `friend${n}`, `Friend ${n}`, password, false),
     ),
   )
-  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 3)
-  assert.equal(Number((await pool.query('SELECT count(*) FROM users')).rows[0].count), 4)
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 4)
+  const rejected = results.find((r) => r.status === 'rejected')
+  assert.ok(rejected?.status === 'rejected')
+  assert.equal(rejected.reason.code, 'GROUP_FULL')
+  assert.equal(Number((await pool.query('SELECT count(*) FROM users')).rows[0].count), 5)
+})
+
+test('an admin can be provisioned after all four voting profiles exist', async () => {
+  await TestDatabase.users()
+  const auth = new UserService(
+    TestDatabase.database,
+    new UserRepository(TestDatabase.database),
+    new Clock(),
+    TestDatabase.passwords,
+  )
+  const admin = await auth.create(null, 'admin', 'Admin', password, true)
+  assert.equal(admin.is_admin, true)
+  await assert.rejects(auth.create(null, 'otheradmin', 'Other admin', password, true), {
+    code: 'ADMIN_EXISTS',
+  })
 })
 
 test('DB-backed rate limiting survives separate model instances', async () => {

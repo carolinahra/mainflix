@@ -38,7 +38,7 @@ export class TestDatabase {
   static async users(): Promise<User[]> {
     return (
       await this.pool.query<User>(`INSERT INTO users (email,username,password_hash,name,is_admin)
-      SELECT 'friend' || n || '@example.com','friend' || n,'unused','Friend ' || n,n=1 FROM generate_series(1,4) n RETURNING id,email,username,name,is_admin`)
+      SELECT 'friend' || n || '@example.com','friend' || n,'unused','Friend ' || n,false FROM generate_series(1,4) n RETURNING id,email,username,name,is_admin`)
     ).rows
   }
   static async movie(title: string = 'Movie', status: string = 'approved'): Promise<Movie> {

@@ -33,6 +33,34 @@ test('weekly party progress counts actual responses including skips without inve
   assert.match(markup, /Skipping/)
   assert.match(markup, /Not nominated yet/)
   assert.doesNotMatch(markup, /Jamie|Sam/)
+  assert.match(markup, />Skip this week</)
+  app.state = {
+    ...app.state,
+    user: { ...app.state.user!, is_admin: true },
+    search: {
+      ...app.state.search,
+      local: [
+        {
+          id: 1,
+          title: 'Approved film',
+          tmdb_id: null,
+          release_year: 2020,
+          overview: '',
+          poster_path: null,
+          approval_status: 'approved',
+          submitted_by: null,
+          eligible: true,
+          eligibility_changed_by: null,
+          eligibility_changed_at: null,
+          created_at: '2026-11-09T12:00:00Z',
+        },
+      ],
+    },
+  }
+  const adminMarkup = renderToStaticMarkup(app.render())
+  assert.doesNotMatch(adminMarkup, />Skip this week<|>Nominate</)
+  app.state = { ...app.state, round: { ...app.state.round!, status: 'ready' } }
+  assert.match(renderToStaticMarkup(app.render()), /Draw this week/)
 })
 
 test('signed out users see the localized cinematic welcome and accessible sign in form', () => {

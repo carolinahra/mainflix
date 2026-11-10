@@ -83,7 +83,7 @@
   "FORBIDDEN": "You do not have permission for this action.",
   "INVALID_ORIGIN": "This app address is not allowed. Check the deployment settings.",
   "USER_NOT_FOUND": "User not found.",
-  "GROUP_FULL": "All four accounts have already been created.",
+  "GROUP_FULL": "All four voting profiles have already been created.",
   "ADMIN_EXISTS": "An admin already exists.",
   "EMAIL_EXISTS": "This email is already registered.",
   "ROUND_EXPIRED": "A new week has started. Reload the current round.",

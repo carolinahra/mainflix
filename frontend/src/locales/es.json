@@ -83,7 +83,7 @@
   "FORBIDDEN": "No tienes permiso para esta acción.",
   "INVALID_ORIGIN": "La dirección de la aplicación no está permitida. Revisa la configuración del despliegue.",
   "USER_NOT_FOUND": "No se ha encontrado al usuario.",
-  "GROUP_FULL": "Ya se han creado las cuatro cuentas.",
+  "GROUP_FULL": "Ya se han creado los cuatro perfiles de votación.",
   "ADMIN_EXISTS": "Ya existe un administrador.",
   "EMAIL_EXISTS": "Este correo ya está registrado.",
   "ROUND_EXPIRED": "Ha comenzado una nueva semana. Recarga el sorteo actual.",

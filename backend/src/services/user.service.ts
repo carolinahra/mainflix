@@ -42,7 +42,7 @@ export class UserService {
     return this.database.transaction(async (db) => {
       await this.database.lockUsers(db)
       const existing: User[] = await this.repository.list(db)
-      if (existing.length >= 4) throw new GroupFullException()
+      if (!admin && existing.filter((u) => !u.is_admin).length >= 4) throw new GroupFullException()
       if (email !== null && existing.some((u) => u.email === email))
         throw new EmailExistsException()
       if (existing.some((u) => u.username === username)) throw new UsernameExistsException()

@@ -7,6 +7,39 @@ beforeEach(() => TestDatabase.reset())
 after(() => pool.end())
 const monday = () => new Date('2026-11-09T12:00:00Z')
 
+test('the admin cannot vote or skip and old admin responses do not affect the four voters or draw', async () => {
+  const friends = await TestDatabase.users()
+  const {
+    rows: [admin],
+  } = await pool.query<{ id: number }>(
+    "INSERT INTO users (username,password_hash,name,is_admin) VALUES ('admin','unused','Admin',true) RETURNING id",
+  )
+  assert.ok(admin)
+  const a = await TestDatabase.movie('Voter film')
+  const b = await TestDatabase.movie('Admin film')
+  const rounds = TestDatabase.rounds(monday, () => 0)
+  const { week } = await rounds.current()
+  await pool.query('INSERT INTO round_responses (week_start,user_id,movie_id) VALUES ($1,$2,$3)', [
+    week,
+    admin.id,
+    b.id,
+  ])
+  let state = await rounds.current()
+  assert.deepEqual(
+    state.members.map((m) => m.id),
+    friends.map((u) => u.id),
+  )
+  assert.equal(state.responses.length, 0)
+  for (const movieId of [a.id, null])
+    await assert.rejects(rounds.respond(admin.id, week, movieId), { code: 'FORBIDDEN' })
+  for (const friend of friends.slice(0, 3)) await rounds.respond(friend.id, week, a.id)
+  await assert.rejects(rounds.draw(admin.id, week), { code: 'ROUND_NOT_READY' })
+  state = await rounds.respond(friends[3]!.id, week, null)
+  assert.equal(state.status, 'ready')
+  assert.equal(state.responses.length, 4)
+  assert.equal((await rounds.draw(admin.id, week)).winner?.id, a.id)
+})
+
 test('Madrid weeks reset at local midnight, including both DST changes', () => {
   for (const [input, expected] of [
     ['2026-11-08T22:59:59Z', '2026-11-02'],

@@ -59,11 +59,17 @@ export class RoundRepository {
       .leftJoin('movies as m', 'm.id', 'r.movie_id')
       .select(['r.user_id', 'u.name', 'r.movie_id', 'm.title'])
       .where('r.week_start', '=', week)
+      .where('u.is_admin', '=', false)
       .orderBy('r.user_id')
       .execute()
   }
   async members(db: Connection): Promise<Member[]> {
-    return db.selectFrom('users').select(['id', 'name']).orderBy('id').execute()
+    return db
+      .selectFrom('users')
+      .select(['id', 'name'])
+      .where('is_admin', '=', false)
+      .orderBy('id')
+      .execute()
   }
   async respond(
     userId: number,

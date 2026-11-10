@@ -18,6 +18,7 @@ cp .env.example .env
 docker compose up -d db
 npm run db:migrate
 npm run user:create -- --username you --name You --admin
+npm run user:create -- --username friend1 --name Friend1
 npm run user:create -- --username friend2 --name Friend2
 npm run user:create -- --username friend3 --name Friend3
 npm run user:create -- --username friend4 --name Friend4
@@ -25,7 +26,7 @@ npm run user:create -- --username friend4 --name Friend4
 
 Usernames are required, unique, case-insensitive, and contain 3–32 letters, numbers, or underscores. Email is optional: add `--email you@example.com` when creating an account to enable email login as well. Supplied emails are validated and unique. Sign in with your username or email and password. Migrations preserve existing accounts, passwords, and sessions.
 
-The provisioning command prompts for a hidden password (6–128 characters). For noninteractive provisioning, set `MAINFLIX_PASSWORD` in the process environment; do not put passwords in command arguments, commits, or shared logs. Exactly four accounts and at most one admin are allowed. Create your admin first.
+The provisioning command prompts for a hidden password (6–128 characters). For noninteractive provisioning, set `MAINFLIX_PASSWORD` in the process environment; do not put passwords in command arguments, commits, or shared logs. Up to four voting profiles plus one separate admin account are allowed. The admin cannot nominate or skip and does not count toward voting readiness.
 
 Start the applications in separate terminals:
 
@@ -62,7 +63,7 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 ## Rules
 
 - Weeks run Monday 00:00 through the next Monday 00:00 in **Europe/Madrid**, including daylight-saving changes.
-- A user nominates one approved, eligible movie or explicitly skips. Responses can change until all four have responded, then lock.
+- Each non-admin profile nominates one approved, eligible movie or explicitly skips. Responses can change until all four voting profiles have responded, then lock. Existing admin responses are ignored.
 - Four skips close the round without a winner. Incomplete/undrawn rounds expire at Monday midnight. There is no automatic draw.
 - Every nomination is one entry. Repeated nominations weight that movie proportionally.
 - Any member can draw. Short database transactions serialize group operations: concurrent clicks return the same saved winner. The roulette only presents that result.
@@ -130,7 +131,7 @@ Tests exercise real PostgreSQL transactions for authentication, concurrent draws
 ## Vercel + Neon
 
 1. Create a free Neon PostgreSQL project in a region near your Vercel backend. Copy the **pooled** connection URL and keep its TLS parameters (`sslmode=require` or the provider's stronger verified settings). Never disable certificate verification.
-2. Use that URL as `DATABASE_URL` locally to run migrations and provision the four accounts. Back up an existing database before applying migrations.
+2. Use that URL as `DATABASE_URL` locally to run migrations and provision the four voting profiles and separate admin account. Back up an existing database before applying migrations.
 3. Create a Vercel project with **Root Directory `backend`** and the Express framework preset. Set `DATABASE_URL`, `APP_ORIGIN` (your frontend's final HTTPS origin), `NODE_ENV=production`, and optional `TMDB_TOKEN`.
 4. Create a frontend Vercel project with **Root Directory `frontend`**, Vite preset, build `npm run build`, output `dist`. Enable inclusion of files outside the root directory for workspace/type-only imports.
 5. Add the frontend rewrite below using your backend's deployment hostname, keeping it before SPA fallback. The browser calls the frontend's `/api`; cookies remain on the frontend origin. Do not call the separate backend hostname directly from browser code.
@@ -182,6 +183,6 @@ npm run dev:frontend
 CHROME_PATH=/usr/bin/google-chrome npm run test:e2e --workspace frontend
 ```
 
-Alternatively, install Playwright's Chromium with `npx playwright install chromium` and omit `CHROME_PATH`. Screenshots are written under `/tmp/mainflix-*.png`. E2E tests provision disposable `friend1@example.com` through `friend4@example.com` accounts, with the password `Browser test password!`; friend1 is the demo admin. Never use these credentials in production.
+Alternatively, install Playwright's Chromium with `npx playwright install chromium` and omit `CHROME_PATH`. Screenshots are written under `/tmp/mainflix-*.png`. E2E tests provision disposable `friend1@example.com` through `friend4@example.com` voting profiles and a separate `admin@example.com` account, with the password `Browser test password!`. Never use these credentials in production.
 
 Local demo captures are in `docs/previews/desktop.png`, `iphone-se.png`, `iphone-se-viewport.png`, and `iphone-se-movie.png`. They contain disposable sample data, not real accounts or reviews.

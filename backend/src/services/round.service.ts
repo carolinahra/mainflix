@@ -20,6 +20,7 @@ import {
   MovieNotEligibleException,
   RoundNotReadyException,
   NoNominationsException,
+  ForbiddenException,
 } from '../shared/exceptions/index.js'
 
 export class RoundService {
@@ -60,7 +61,9 @@ export class RoundService {
   async respond(userId: number, week: string, movieId: number | null): Promise<RoundState> {
     return this.database.transaction(async (db) => {
       await this.prepare(db, week)
-      if ((await this.snapshot(week, db)).status !== 'collecting') throw new RoundLockedException()
+      const state: RoundState = await this.snapshot(week, db)
+      if (!state.members.some((member) => member.id === userId)) throw new ForbiddenException()
+      if (state.status !== 'collecting') throw new RoundLockedException()
       if (movieId !== null) {
         const movie: Movie | undefined = await this.movies.find(movieId, db)
         if (!movie?.eligible || movie.approval_status !== 'approved')

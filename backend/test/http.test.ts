@@ -177,8 +177,10 @@ test('only admins approve movies, reset links use configured origin, and review 
   assert.equal(detail.body.reviews[0].user_id, friend.id)
 })
 
-test('all four users see the same draw through the API and can review after personal viewing', async () => {
+test('four voting profiles and a separate non-voting admin see the same draw and can review', async () => {
   const f = new HttpFixture()
+  await f.container.userService.create(null, 'admin', 'Admin', 'A long test password!', true)
+  const adminCookie = await f.login('admin')
   const friends = await Promise.all(
     [1, 2, 3, 4].map((n) =>
       f.container.userService.create(
@@ -186,7 +188,7 @@ test('all four users see the same draw through the API and can review after pers
         `friend${n}`,
         `Friend ${n}`,
         'A long test password!',
-        n === 1,
+        false,
       ),
     ),
   )
@@ -195,6 +197,14 @@ test('all four users see the same draw through the API and can review after pers
   const a = await TestDatabase.movie('A')
   const b = await TestDatabase.movie('B')
   const current = await request(app).get('/api/rounds/current').set('Cookie', cookies[0]!)
+  assert.equal(current.body.members.length, 4)
+  for (const movieId of [a.id, null])
+    await request(app)
+      .put(`/api/rounds/${current.body.week}/response`)
+      .set('Cookie', adminCookie)
+      .set('Origin', 'http://localhost:5173')
+      .send({ movieId })
+      .expect(403)
   for (const [i, cookie] of cookies.entries())
     await request(app)
       .put(`/api/rounds/${current.body.week}/response`)
@@ -203,7 +213,7 @@ test('all four users see the same draw through the API and can review after pers
       .send({ movieId: i < 2 ? a.id : b.id })
       .expect(200)
   const draws = await Promise.all(
-    cookies.map((cookie) =>
+    [...cookies, adminCookie].map((cookie) =>
       request(app)
         .post(`/api/rounds/${current.body.week}/draw`)
         .set('Cookie', cookie)

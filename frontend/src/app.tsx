@@ -399,6 +399,7 @@ export class Mainflix extends Component<Props, State> {
   }
   private renderCard(movie: Film): ReactNode {
     const canNominate: boolean =
+      !this.state.user?.is_admin &&
       this.state.round?.status === 'collecting' &&
       movie.eligible &&
       movie.approval_status === 'approved'
@@ -620,7 +621,7 @@ export class Mainflix extends Component<Props, State> {
             </div>
             <p className="muted">{this.t('resetTime')}</p>
           </div>
-          {round.status === 'collecting' && (
+          {round.status === 'collecting' && !this.state.user?.is_admin && (
             <button disabled={this.state.busy} onClick={(): void => this.nominate(null)}>
               {this.t('skip')}
             </button>
@@ -657,22 +658,24 @@ export class Mainflix extends Component<Props, State> {
           <p className="hero-description">{this.t('heroDescription')}</p>
           {this.state.user && (
             <div className="hero-actions">
-              <button
-                className="primary"
-                onClick={(): void => {
-                  document.getElementById('movie-catalogue')?.scrollIntoView({
-                    behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
-                      ? 'instant'
-                      : 'smooth',
-                    block: 'start',
-                  })
-                  document
-                    .querySelector<HTMLInputElement>('#movie-catalogue input[type="search"]')
-                    ?.focus({ preventScroll: true })
-                }}
-              >
-                <span aria-hidden="true">▶</span> {this.t('nominateMovie')}
-              </button>
+              {!this.state.user.is_admin && (
+                <button
+                  className="primary"
+                  onClick={(): void => {
+                    document.getElementById('movie-catalogue')?.scrollIntoView({
+                      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
+                        ? 'instant'
+                        : 'smooth',
+                      block: 'start',
+                    })
+                    document
+                      .querySelector<HTMLInputElement>('#movie-catalogue input[type="search"]')
+                      ?.focus({ preventScroll: true })
+                  }}
+                >
+                  <span aria-hidden="true">▶</span> {this.t('nominateMovie')}
+                </button>
+              )}
               <button className="secondary" onClick={(): void => this.navigate('catalogue')}>
                 {this.t('browseCatalogue')}
               </button>

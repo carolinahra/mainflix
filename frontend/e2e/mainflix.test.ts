@@ -36,13 +36,20 @@ class BrowserFixture {
     await sql`TRUNCATE users,movies,rounds,rate_limits RESTART IDENTITY CASCADE`.execute(
       this.database.client,
     )
+    await this.container.userService.create(
+      'admin@example.com',
+      'admin',
+      'Admin',
+      'Browser test password!',
+      true,
+    )
     for (let n = 1; n <= 4; n++)
       await this.container.userService.create(
         `friend${n}@example.com`,
         `friend${n}`,
         `Friend${n}`,
         'Browser test password!',
-        n === 1,
+        false,
       )
     await this.database.client
       .insertInto('movies')
@@ -86,8 +93,8 @@ test(
     try {
       await f.prepare()
       const pages: Page[] = await Promise.all([1, 2, 3, 4].map(() => f.page()))
-      const admin: Page = pages[0]!
-      await f.login(admin, 'friend1@example.com')
+      const admin: Page = await f.page()
+      await f.login(admin, 'admin@example.com')
       // Regression: approved films appear immediately, without typing or changing tabs.
       await admin
         .getByRole('button', { name: 'Smoke Film A', exact: true })
@@ -102,8 +109,8 @@ test(
       assert.equal(await admin.getByText('friend4@example.com', { exact: true }).count(), 0)
       await admin.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
       await admin.getByRole('button', { name: 'Sign out', exact: true }).click()
-      await f.login(admin, 'friend1@example.com')
-      for (let i = 1; i < 4; i++) await f.login(pages[i]!, `friend${i + 1}@example.com`)
+      await f.login(admin, 'admin@example.com')
+      for (let i = 0; i < 4; i++) await f.login(pages[i]!, `friend${i + 1}@example.com`)
       for (const [i, page] of pages.entries()) {
         const card = page.locator('article').filter({
           has: page.getByRole('button', {
