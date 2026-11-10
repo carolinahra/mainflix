@@ -47,3 +47,67 @@ test('signed out users see the localized cinematic welcome and accessible sign i
   assert.match(markup, /Entrar/)
   assert.doesNotMatch(markup, /<progress/)
 })
+
+test('movie roulette keeps weighted nominations, skips abstentions and points to the saved winner', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  const winner = {
+    id: 2,
+    title: 'Arrival',
+    tmdb_id: null,
+    release_year: 2016,
+    overview: '',
+    poster_path: null,
+    approval_status: 'approved' as const,
+    submitted_by: null,
+    eligible: false,
+    eligibility_changed_by: null,
+    eligibility_changed_at: null,
+    created_at: '2026-11-09T12:00:00Z',
+  }
+  app.state = {
+    ...app.state,
+    loading: false,
+    spinning: true,
+    user: { id: 1, name: 'Leo', email: 'leo@example.com', username: 'leo', is_admin: false },
+    round: {
+      week: '2026-11-09',
+      winner_id: 2,
+      drawn_by: 1,
+      drawn_at: '2026-11-09T12:00:00Z',
+      ends_at: '2026-11-16T00:00:00Z',
+      winner,
+      status: 'selected',
+      members: [1, 2, 3, 4].map((id) => ({ id, name: `Friend ${id}` })),
+      responses: [
+        { user_id: 1, name: 'Friend 1', movie_id: 1, title: 'Inception' },
+        { user_id: 2, name: 'Friend 2', movie_id: 2, title: 'Arrival' },
+        { user_id: 3, name: 'Friend 3', movie_id: 2, title: 'Arrival' },
+        { user_id: 4, name: 'Friend 4', movie_id: null, title: null },
+      ],
+    },
+  }
+  const markup = renderToStaticMarkup(app.render())
+  const wheel = markup.match(/<svg class="roulette-wheel"[\s\S]*?<\/svg>/)?.[0]
+  assert.ok(wheel, 'Nominated titles must appear on a spinning wheel')
+  assert.equal(wheel.match(/<title>Arrival<\/title>/g)?.length, 2)
+  assert.match(wheel, /<title>Inception<\/title>/)
+  assert.doesNotMatch(wheel, /Skipping|Friend 4/)
+  // Three entries: Arrival's first sector is centered at 180°, which ends at the top.
+  assert.match(wheel, /transform:rotate\(1980deg\)/)
+  assert.doesNotMatch(markup, /class="winner"/)
+  app.state = { ...app.state, spinning: false }
+  assert.match(renderToStaticMarkup(app.render()), /Replay roulette/)
+
+  app.state = {
+    ...app.state,
+    spinning: true,
+    round: {
+      ...app.state.round!,
+      responses: [{ user_id: 2, name: 'Friend 2', movie_id: 2, title: 'Arrival' }],
+    },
+  }
+  const solo = renderToStaticMarkup(app.render())
+  assert.match(solo, /transform:rotate\(1980deg\)/)
+  assert.doesNotMatch(solo, /NaN|Infinity/)
+})

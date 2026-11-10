@@ -117,6 +117,46 @@ test(
         .getByRole('button', { name: "Draw this week's movie", exact: true })
         .waitFor({ timeout: 10000 })
       await admin.getByRole('button', { name: "Draw this week's movie", exact: true }).click()
+      const wheel = admin.locator('.roulette-wheel')
+      await wheel.waitFor()
+      assert.deepEqual(await wheel.locator('title').allTextContents(), [
+        'Smoke Film A',
+        'Smoke Film A',
+        'Smoke Film B',
+        'Smoke Film B',
+      ])
+      const start = await wheel.evaluate((element) => getComputedStyle(element).transform)
+      await admin.waitForTimeout(200)
+      assert.notEqual(await wheel.evaluate((element) => getComputedStyle(element).transform), start)
+      await admin.waitForFunction(() => {
+        const bounds = document.querySelector('.roulette-wheel')?.getBoundingClientRect()
+        return bounds && bounds.top >= 0 && bounds.bottom <= innerHeight
+      })
+      await wheel.evaluate((element) =>
+        element.getAnimations().forEach((animation) => animation.finish()),
+      )
+      const saved = await (
+        await admin.request.get(`${f.container.config.origin}/api/rounds/current`)
+      ).json()
+      const names = await wheel.locator('title').allTextContents()
+      const midpoint = ((names.indexOf(saved.winner.title) + 0.5) * 360) / names.length
+      const rotation = await wheel.evaluate((element) => {
+        const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform)
+        return (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI
+      })
+      const pointerAngle = (((rotation + midpoint) % 360) + 360) % 360
+      assert.ok(
+        Math.min(pointerAngle, 360 - pointerAngle) < 0.01,
+        'The pointer must land on the server winner',
+      )
+      await admin.screenshot({ path: '/tmp/mainflix-roulette-desktop.png', fullPage: true })
+      await admin.setViewportSize({ width: 375, height: 667 })
+      assert.equal(
+        await admin.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await admin.screenshot({ path: '/tmp/mainflix-roulette-mobile.png', fullPage: true })
+      await admin.setViewportSize({ width: 1280, height: 900 })
       const winners: string[] = []
       for (const page of pages) {
         const winner = page.locator('.winner .text-button')
@@ -124,6 +164,18 @@ test(
         winners.push((await winner.textContent())!)
       }
       assert.equal(new Set(winners).size, 1)
+      await admin.getByRole('button', { name: 'Replay roulette', exact: true }).click()
+      await wheel.waitFor()
+      await admin.locator('.winner .text-button').waitFor()
+      const replayed = await (
+        await admin.request.get(`${f.container.config.origin}/api/rounds/current`)
+      ).json()
+      assert.equal(replayed.winner.id, saved.winner.id)
+      assert.equal(replayed.drawn_at, saved.drawn_at)
+      await admin.emulateMedia({ reducedMotion: 'reduce' })
+      await admin.getByRole('button', { name: 'Replay roulette', exact: true }).click()
+      await admin.locator('.winner .text-button').waitFor({ timeout: 1000 })
+      await admin.emulateMedia({ reducedMotion: 'no-preference' })
       await admin.locator('.winner .text-button').click()
       await admin.getByRole('button', { name: "I've watched it", exact: true }).click()
       await admin.getByLabel('Your review (optional)', { exact: true }).fill('A great movie night.')
