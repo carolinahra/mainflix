@@ -39,6 +39,10 @@ Open **http://localhost:5173**. Vite forwards `/api` to port 3000. `APP_ORIGIN` 
 
 Set `TMDB_TOKEN` to a TMDB **API Read Access Token** to enable external search/import. Leave it empty to use the local catalogue and manual movie submissions. TMDB credentials never enter the frontend bundle. Search/import calls time out after five seconds. Movie metadata/poster paths are stored locally; posters load from TMDB's image CDN. Follow [TMDB attribution requirements](https://developer.themoviedb.org/docs/faq).
 
+The home page has one **Popular in Spain** section with **La bola negra** and **Ruega por nosotras** pinned first, followed by Romantic comedy, Horror, and Comedy as the group's favorite browsing genres, plus dedicated Barbie and Animation rows. Recently added lists local catalogue submissions newest first. New releases covers theatrical/digital releases in Spain over the last 90 days; Popular lists Spain releases ordered by TMDB's global popularity, not a Spain-only audience ranking. Additional genres are available from the genre selector. Each row loads more independently. Browsing does not import movies automatically; existing rejected/excluded movies remain blocked.
+
+**Random movie** lets a player choose a category and any year, one year, or an inclusive year range. Picks come from TMDB, sampling a random page of its accessible results (up to 500 pages), then a random eligible film on that page. **Accept and nominate** saves the movie and weekly nomination together; **Try again** retains filters and avoids the displayed movie; **Cancel** saves nothing. Random suggestions require TMDB, while local/manual nominations continue working without it.
+
 ## Architecture
 
 `Container` follows the lazy cached getter pattern in the user's knucklebones project. Constructors receive dependencies; optional setters allow injecting the test database, clock, lottery, or external API. The HTTP application resolves controllers on first use, so building the container/health endpoint does not connect to PostgreSQL.
@@ -69,7 +73,7 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 - Any member can draw. Short database transactions serialize group operations: concurrent clicks return the same saved winner. The roulette only presents that result.
 - Winning excludes the movie from later draws immediately. Personal watched progress is independent. Only the admin can restore eligibility; saved winners never change.
 - Losing nominations do not carry over, but their movies stay in the catalogue.
-- New TMDB imports and manual entries need admin approval. Pending/rejected films cannot be nominated. Admins complete metadata or merge pending duplicates.
+- TMDB imports and manual additions are immediately eligible for nomination. Manual additions are the fallback for films missing from TMDB. Existing rejected/excluded films stay blocked; admins can still manage metadata and eligibility or resolve older pending entries.
 - Each user can mark any approved catalogue movie personally watched, including movies seen before Mainflix; doing so does not remove eligibility. One editable review per user/movie, integer 1–5 stars and optional text. Viewing progress is required to review, and survives reselection.
 - Old rounds/reviews persist. No cron task is needed: the API determines the current round from server time on each request; the frontend refreshes every five seconds while visible.
 
@@ -99,10 +103,11 @@ All routes except health, login, reset, and logout require a session cookie. `/a
 | POST | `/api/auth/reset` | `{token,password}`; revokes sessions |
 | GET | `/api/rounds/current` | Current round, responses, members and winner |
 | GET | `/api/rounds?limit=30&offset=0` | Round history |
-| PUT | `/api/rounds/:week/response` | `{movieId:number}` or `{movieId:null}` to skip |
+| PUT | `/api/rounds/:week/response` | `{movieId:number}`, `{movieId:null}` to skip, or `{tmdbId:number}` to import and nominate atomically; optional `language=es` |
 | POST | `/api/rounds/:week/draw` | Saved shared result; `week` is `YYYY-MM-DD` |
 | GET | `/api/movies?q=title&language=es&limit=30&offset=0` | `{local,remote,remoteError}` |
-| POST | `/api/movies?language=es` | `{tmdbId}` or `{title,releaseYear?}` → pending movie |
+| GET | `/api/movies/browse?category=horror&language=es&page=1` | `{local,remote,remoteError,page,totalPages}`; categories: `featured`, `romanticComedy`, `horror`, `comedy`, `recentlyAdded`, `newReleases`, `popular`, `action`, `scienceFiction`, `drama`, `thriller`, `animation`, `adventure`, `fantasy`, `romance`, `barbie`; pages 1–500; optional inclusive `yearFrom`/`yearTo` filters for TMDB discovery |
+| POST | `/api/movies?language=es` | `{tmdbId}` or `{title,releaseYear?}` → approved movie |
 | GET | `/api/movies/:id` | Movie, personal watched records and reviews |
 | PUT | `/api/movies/:id/watched` | `{}` → mark your viewing progress |
 | PUT | `/api/movies/:id/review` | `{rating,text?}` → create/edit your review |
