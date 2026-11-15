@@ -86,6 +86,221 @@ class BrowserFixture {
 }
 
 test(
+  'random nominations keep filters, reroll, cancel without saving, and accept the displayed TMDB film',
+  { timeout: 60_000 },
+  async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare()
+      const page = await f.page(true)
+      const nominations: unknown[] = []
+      const filters: string[] = []
+      let mode: 'movies' | 'empty' | 'error' | 'slow' = 'movies'
+      await page.route('**/api/movies/browse?**', async (route) => {
+        const url = new URL(route.request().url())
+        if (!url.searchParams.has('yearFrom')) return route.continue()
+        filters.push(
+          `${url.searchParams.get('category')}:${url.searchParams.get('yearFrom')}:${url.searchParams.get('yearTo')}`,
+        )
+        if (mode === 'slow') await new Promise((resolve) => setTimeout(resolve, 300))
+        await route
+          .fulfill({
+            json: {
+              local: [],
+              remote:
+                mode === 'empty' || mode === 'error'
+                  ? []
+                  : [1, 2].map((id) => ({
+                      tmdb_id: 1000 + id,
+                      title: `Random film ${id}`,
+                      release_year: 2014,
+                      overview: 'Movie synopsis',
+                      poster_path: null,
+                    })),
+              remoteError: mode === 'error' ? 'TMDB_UNAVAILABLE' : null,
+              page: 1,
+              totalPages: 1,
+            },
+          })
+          .catch(() => {})
+      })
+      await page.route('**/api/rounds/*/response?**', async (route) => {
+        nominations.push(route.request().postDataJSON())
+        const round = await (
+          await page.request.get(`${f.container.config.origin}/api/rounds/current`)
+        ).json()
+        await route.fulfill({ json: round })
+      })
+      await f.login(page, 'friend1@example.com')
+      const picker = page.getByRole('region', { name: 'Random movie', exact: true })
+      await picker.getByRole('button', { name: 'Random movie', exact: true }).click()
+      const lightbox = page.getByRole('dialog', { name: 'Random movie', exact: true })
+      await lightbox.waitFor()
+      assert.equal(await lightbox.evaluate((element) => element.matches(':modal')), true)
+      await page.keyboard.press('Escape')
+      await lightbox.waitFor({ state: 'hidden' })
+      assert.equal(
+        await picker
+          .getByRole('button', { name: 'Random movie', exact: true })
+          .evaluate((element) => element === document.activeElement),
+        true,
+      )
+      await picker.getByRole('button', { name: 'Random movie', exact: true }).click()
+      await page.mouse.click(2, 2)
+      await lightbox.waitFor({ state: 'hidden' })
+      await picker.getByRole('button', { name: 'Random movie', exact: true }).click()
+      await picker.getByLabel('Category', { exact: true }).selectOption('scienceFiction')
+      await picker.getByLabel('From year', { exact: true }).fill('2014')
+      await picker.getByRole('button', { name: 'Choose a movie', exact: true }).click()
+      await picker.getByRole('button', { name: 'Accept and nominate', exact: true }).waitFor()
+      const first = await picker.locator('.random-result h3').textContent()
+      assert.deepEqual(nominations, [])
+      await picker.getByRole('button', { name: 'Try again', exact: true }).click()
+      await page.waitForFunction(
+        (previous) => document.querySelector('.random-result h3')?.textContent !== previous,
+        first,
+      )
+      assert.ok(filters.every((filter) => filter === 'scienceFiction:2014:2014'))
+      await picker.getByRole('button', { name: 'Cancel', exact: true }).click()
+      assert.deepEqual(nominations, [])
+      assert.equal(await picker.locator('.random-result').count(), 0)
+      await picker.getByRole('button', { name: 'Random movie', exact: true }).click()
+      await picker.getByLabel('To year', { exact: true }).fill('2020')
+      mode = 'empty'
+      await picker.getByRole('button', { name: 'Choose a movie', exact: true }).click()
+      await picker.getByRole('alert').filter({ hasText: 'No movies found' }).waitFor()
+      mode = 'error'
+      await picker.getByRole('button', { name: 'Choose a movie', exact: true }).click()
+      await picker
+        .getByRole('alert')
+        .filter({ hasText: 'TMDB is temporarily unavailable' })
+        .waitFor()
+      mode = 'slow'
+      await picker.getByRole('button', { name: 'Choose a movie', exact: true }).click()
+      await picker.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await page.waitForTimeout(400)
+      assert.equal(await picker.locator('.random-result').count(), 0)
+      mode = 'movies'
+      await picker.getByRole('button', { name: 'Random movie', exact: true }).click()
+      await picker.getByRole('button', { name: 'Choose a movie', exact: true }).click()
+      await picker.getByRole('button', { name: 'Accept and nominate', exact: true }).waitFor()
+      const chosen = await picker.locator('.random-result h3').textContent()
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await page.screenshot({ path: '/tmp/mainflix-random-mobile.png', fullPage: true })
+      await picker.getByRole('button', { name: 'Accept and nominate', exact: true }).click()
+      await page.getByRole('status').filter({ hasText: 'Your nomination is saved' }).waitFor()
+      assert.deepEqual(nominations, [{ tmdbId: chosen === 'Random film 1' ? 1001 : 1002 }])
+      assert.ok(filters.includes('scienceFiction:2014:2020'))
+      assert.equal(await picker.locator('.random-result').count(), 0)
+    } finally {
+      await f.close()
+    }
+  },
+)
+
+test(
+  'discovery shows featured films, paginates genres, switches language and preserves local controls',
+  { timeout: 60_000 },
+  async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare()
+      const page = await f.page()
+      const calls: string[] = []
+      let failHorrorPage = true
+      await page.route('**/api/movies/browse?**', async (route) => {
+        const url = new URL(route.request().url())
+        const category = url.searchParams.get('category')
+        const pageNumber = Number(url.searchParams.get('page'))
+        const language = url.searchParams.get('language')
+        calls.push(`${category}:${pageNumber}:${language}`)
+        const titles =
+          category === 'featured'
+            ? ['La bola negra', 'Ruega por nosotras']
+            : [`${category} page ${pageNumber}`]
+        const remote = titles.map((title, i) => ({
+          tmdb_id: category === 'featured' ? [1422041, 1522071][i] : pageNumber,
+          title,
+          release_year: 2026,
+          overview: '',
+          poster_path: null,
+        }))
+        if (category === 'recentlyAdded') {
+          await route.continue()
+          return
+        }
+        if (category === 'horror' && pageNumber === 2 && failHorrorPage) {
+          failHorrorPage = false
+          await route.fulfill({
+            json: {
+              local: [],
+              remote: [],
+              remoteError: 'TMDB_UNAVAILABLE',
+              page: 2,
+              totalPages: 2,
+            },
+          })
+          return
+        }
+        await route.fulfill({
+          json: {
+            local: [],
+            remote,
+            remoteError: null,
+            page: pageNumber,
+            totalPages: category === 'featured' ? 1 : 2,
+          },
+        })
+      })
+      await f.login(page, 'friend1@example.com')
+      const popular = page.getByRole('region', { name: 'Popular in Spain', exact: true })
+      await popular.getByRole('heading', { name: 'La bola negra', exact: true }).waitFor()
+      await popular.getByRole('heading', { name: 'Ruega por nosotras', exact: true }).waitFor()
+      assert.equal(await page.locator('#browse-featured').count(), 0)
+      const horror = page.locator('section').filter({ has: page.locator('#browse-horror') })
+      await horror.getByRole('heading', { name: 'horror page 1', exact: true }).waitFor()
+      await horror.getByRole('button', { name: 'Load more', exact: true }).click()
+      await horror.getByRole('button', { name: 'Try again', exact: true }).click()
+      await horror
+        .getByRole('heading', { name: 'horror page 2', exact: true })
+        .waitFor({ timeout: 3000 })
+      assert.equal(
+        await horror.getByRole('heading', { name: 'horror page 1', exact: true }).count(),
+        1,
+      )
+      assert.equal(await horror.getByRole('button', { name: 'Load more', exact: true }).count(), 0)
+      const recent = page.getByRole('region', { name: 'Recently added', exact: true })
+      await recent.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
+      await recent.getByRole('button', { name: 'Nominate', exact: true }).first().waitFor()
+      await page.getByLabel('Browse by genre', { exact: true }).selectOption('scienceFiction')
+      await page.getByRole('heading', { name: 'scienceFiction page 1', exact: true }).waitFor()
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes('category=featured&language=es')),
+        page.getByLabel('Language / Idioma').selectOption('es'),
+      ])
+      await page.getByRole('heading', { name: 'Comedia romántica', exact: true }).waitFor()
+      assert.ok(calls.includes('featured:1:es'))
+      assert.ok(calls.includes('horror:2:en'))
+      for (const width of [375, 320, 1280]) {
+        await page.setViewportSize({ width, height: 900 })
+        assert.equal(
+          await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+          false,
+        )
+      }
+      await page.getByRole('button', { name: 'Salir', exact: true }).click()
+      await page.getByRole('button', { name: 'Entrar', exact: true }).waitFor()
+      assert.equal(await page.getByText('La bola negra', { exact: true }).count(), 0)
+    } finally {
+      await f.close()
+    }
+  },
+)
+
+test(
   'initial catalogue, expired admin session isolation, weighted shared draw, reviews, and Spanish UI',
   { timeout: 90_000 },
   async () => {
@@ -97,6 +312,7 @@ test(
       await f.login(admin, 'admin@example.com')
       // Regression: approved films appear immediately, without typing or changing tabs.
       await admin
+        .locator('#movie-catalogue')
         .getByRole('button', { name: 'Smoke Film A', exact: true })
         .waitFor({ timeout: 5000 })
       await admin.getByRole('button', { name: 'Admin', exact: true }).click()
@@ -107,12 +323,15 @@ test(
       // Regression: a different account never inherits the admin's cached panel or dialog.
       assert.equal(await admin.getByRole('button', { name: 'Admin', exact: true }).count(), 0)
       assert.equal(await admin.getByText('friend4@example.com', { exact: true }).count(), 0)
-      await admin.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
+      await admin
+        .locator('#movie-catalogue')
+        .getByRole('button', { name: 'Smoke Film A', exact: true })
+        .waitFor()
       await admin.getByRole('button', { name: 'Sign out', exact: true }).click()
       await f.login(admin, 'admin@example.com')
       for (let i = 0; i < 4; i++) await f.login(pages[i]!, `friend${i + 1}@example.com`)
       for (const [i, page] of pages.entries()) {
-        const card = page.locator('article').filter({
+        const card = page.locator('#movie-catalogue article').filter({
           has: page.getByRole('button', {
             name: i < 2 ? 'Smoke Film A' : 'Smoke Film B',
             exact: true,
@@ -266,20 +485,33 @@ test(
       )
       await page.screenshot({ path: '/tmp/mainflix-iphone-se-login.png', fullPage: true })
       await f.login(page, 'friend1@example.com')
-      await page.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
+      await page
+        .locator('#movie-catalogue')
+        .getByRole('button', { name: 'Smoke Film A', exact: true })
+        .waitFor()
       await page.getByRole('searchbox').fill('Smoke Film B')
       await page
+        .locator('#movie-catalogue')
         .getByRole('button', { name: 'Smoke Film A', exact: true })
         .waitFor({ state: 'hidden' })
-      await page.getByRole('button', { name: 'Smoke Film B', exact: true }).waitFor()
+      await page
+        .locator('#movie-catalogue')
+        .getByRole('button', { name: 'Smoke Film B', exact: true })
+        .waitFor()
       await page.getByRole('searchbox').fill('')
-      await page.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
+      await page
+        .locator('#movie-catalogue')
+        .getByRole('button', { name: 'Smoke Film A', exact: true })
+        .waitFor()
       await page.screenshot({ path: '/tmp/mainflix-iphone-se-week.png', fullPage: true })
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
         false,
       )
-      await page.getByRole('button', { name: 'Smoke Film A', exact: true }).click()
+      await page
+        .locator('#movie-catalogue')
+        .getByRole('button', { name: 'Smoke Film A', exact: true })
+        .click()
       await page.getByRole('dialog').waitFor()
       await page.getByRole('button', { name: "I've watched it", exact: true }).click()
       await page.getByLabel('Your review (optional)', { exact: true }).fill('An iPhone SE review.')
@@ -294,11 +526,17 @@ test(
       await page.screenshot({ path: '/tmp/mainflix-iphone-se-review.png', fullPage: true })
       await page.getByRole('button', { name: 'Close ×', exact: true }).click()
       const card = page
-        .locator('article')
+        .locator('#movie-catalogue article')
         .filter({ has: page.getByRole('button', { name: 'Smoke Film A', exact: true }) })
       await card.getByRole('button', { name: 'Nominate', exact: true }).click()
       await page.getByRole('status').filter({ hasText: 'Your nomination is saved' }).waitFor()
-      await page.getByLabel('Language / Idioma').selectOption('es')
+      await Promise.all([
+        page.waitForRequest((request) => {
+          const url = new URL(request.url())
+          return url.pathname === '/api/movies' && url.searchParams.get('language') === 'es'
+        }),
+        page.getByLabel('Language / Idioma').selectOption('es'),
+      ])
       await page.getByRole('button', { name: 'Catálogo', exact: true }).click()
       await page.getByRole('heading', { name: 'Buscar películas', exact: true }).waitFor()
       await page.screenshot({ path: '/tmp/mainflix-iphone-se-catalogue.png', fullPage: true })
