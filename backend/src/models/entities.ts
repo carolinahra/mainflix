@@ -58,6 +58,29 @@ export interface MovieSearch {
   remote: MovieMetadata[]
   remoteError: string | null
 }
+export const movieCategories = [
+  'featured',
+  'romanticComedy',
+  'horror',
+  'comedy',
+  'recentlyAdded',
+  'newReleases',
+  'popular',
+  'action',
+  'scienceFiction',
+  'drama',
+  'thriller',
+  'animation',
+  'barbie',
+  'adventure',
+  'fantasy',
+  'romance',
+] as const
+export type MovieCategory = (typeof movieCategories)[number]
+export interface MovieBrowse extends MovieSearch {
+  page: number
+  totalPages: number
+}
 export interface RoundRow {
   week: string
   winner_id: number | null

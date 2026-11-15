@@ -32,6 +32,24 @@ export class MovieRepository {
       .offset(offset)
       .execute()
   }
+  async recentlyAdded(limit: number, offset: number): Promise<Movie[]> {
+    return this.database.client
+      .selectFrom('movies')
+      .selectAll()
+      .orderBy('created_at', 'desc')
+      .orderBy('id', 'desc')
+      .limit(limit)
+      .offset(offset)
+      .execute()
+  }
+  async findTmdbIds(ids: number[]): Promise<Movie[]> {
+    if (!ids.length) return []
+    return this.database.client
+      .selectFrom('movies')
+      .selectAll()
+      .where('tmdb_id', 'in', ids)
+      .execute()
+  }
   async create(values: Insertable<Schema['movies']>, db: Connection): Promise<Movie> {
     return db.insertInto('movies').values(values).returningAll().executeTakeFirstOrThrow()
   }

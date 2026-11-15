@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Language, MovieMetadata } from '../models/entities.js'
+import type { Language, MovieMetadata, MovieCategory } from '../models/entities.js'
 import { TmdbNotConfiguredException, TmdbUnavailableException } from '../shared/exceptions/index.js'
 export class Tmdb {
   private readonly metadataSchema = z.object({
@@ -65,6 +65,67 @@ export class Tmdb {
       const movie: MovieMetadata = this.metadata(payload)
       if (movie.tmdb_id !== id) throw new TmdbUnavailableException()
       return movie
+    } catch {
+      throw new TmdbUnavailableException()
+    }
+  }
+  async browse(
+    category: Exclude<MovieCategory, 'recentlyAdded'>,
+    language: Language,
+    page: number,
+    now: Date,
+    yearFrom?: number,
+    yearTo?: number,
+  ): Promise<{ movies: MovieMetadata[]; totalPages: number }> {
+    if (category === 'featured')
+      return {
+        movies: await Promise.all([1422041, 1522071].map((id) => this.details(id, language))),
+        totalPages: 1,
+      }
+    const genres: Partial<Record<MovieCategory, string>> = {
+      romanticComedy: '35,10749',
+      horror: '27',
+      comedy: '35',
+      action: '28',
+      scienceFiction: '878',
+      drama: '18',
+      thriller: '53',
+      animation: '16',
+      adventure: '12',
+      fantasy: '14',
+      romance: '10749',
+    }
+    const params = new URLSearchParams({
+      include_adult: 'false',
+      include_video: 'false',
+      region: 'ES',
+      sort_by: 'popularity.desc',
+      page: String(page),
+    })
+    if (genres[category]) params.set('with_genres', genres[category])
+    if (yearFrom !== undefined) params.set('primary_release_date.gte', `${yearFrom}-01-01`)
+    if (yearTo !== undefined) params.set('primary_release_date.lte', `${yearTo}-12-31`)
+    if (category === 'newReleases') {
+      params.set(
+        'release_date.gte',
+        new Date(now.getTime() - 90 * 86400000).toISOString().slice(0, 10),
+      )
+      params.set('release_date.lte', now.toISOString().slice(0, 10))
+      params.set('with_release_type', '3|2|4')
+    }
+    const path =
+      category === 'barbie'
+        ? `search/movie?include_adult=false&query=Barbie&page=${page}`
+        : `discover/movie?${params}`
+    const payload = await this.get(path, language)
+    try {
+      const result = z
+        .object({ results: z.array(z.unknown()), total_pages: z.number().int().nonnegative() })
+        .parse(payload)
+      return {
+        movies: result.results.map((value) => this.metadata(value)),
+        totalPages: Math.min(result.total_pages, 500),
+      }
     } catch {
       throw new TmdbUnavailableException()
     }

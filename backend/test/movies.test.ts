@@ -25,7 +25,62 @@ class Upstream {
   }
 }
 
-test('TMDB imports remain pending and concurrent duplicates share one catalogue record', async () => {
+test('recently added orders by creation date with stable pagination even without TMDB', async () => {
+  const first = await TestDatabase.movie('Z first')
+  const latest = await TestDatabase.movie('A latest')
+  const movies = new MovieService(
+    TestDatabase.database,
+    new MovieRepository(TestDatabase.database),
+    new RoundRepository(TestDatabase.database),
+    new Tmdb(''),
+    new Clock(),
+  )
+  const result = await movies.browse('recentlyAdded', 'es', 1)
+  assert.deepEqual(
+    result.local.map((movie) => movie.id),
+    [latest.id, first.id],
+  )
+  assert.equal(result.remoteError, null)
+  assert.deepEqual(result.remote, [])
+  for (let n = 0; n < 19; n++) await TestDatabase.movie(`More film ${n}`)
+  const page1 = await movies.browse('recentlyAdded', 'es', 1)
+  const page2 = await movies.browse('recentlyAdded', 'es', 2)
+  assert.equal(page1.local.length, 20)
+  assert.equal(page1.totalPages, 2)
+  assert.deepEqual(
+    page2.local.map((movie) => movie.id),
+    [first.id],
+  )
+  assert.equal(page2.totalPages, 2)
+})
+
+test('discovery includes local matches so existing movies keep approval and nomination behavior', async () => {
+  const existing = await TestDatabase.movie('Interstellar')
+  await pool.query('UPDATE movies SET tmdb_id=157336 WHERE id=$1', [existing.id])
+  const movies = new MovieService(
+    TestDatabase.database,
+    new MovieRepository(TestDatabase.database),
+    new RoundRepository(TestDatabase.database),
+    new Tmdb('test', async () =>
+      Response.json({ results: [{ id: 157336, title: 'Interstellar' }], total_pages: 2 }),
+    ),
+    new Clock(),
+  )
+  const result = await movies.browse('scienceFiction', 'es', 1)
+  assert.equal(result.local[0]?.id, existing.id)
+  assert.equal(result.remote[0]?.tmdb_id, 157336)
+  assert.equal(result.totalPages, 2)
+  const unavailable = new MovieService(
+    TestDatabase.database,
+    new MovieRepository(TestDatabase.database),
+    new RoundRepository(TestDatabase.database),
+    new Tmdb(''),
+    new Clock(),
+  )
+  assert.equal((await unavailable.browse('popular', 'es', 1)).remoteError, 'TMDB_NOT_CONFIGURED')
+})
+
+test('TMDB imports are immediately nominatable and concurrent duplicates share one catalogue record', async () => {
   const friends = await TestDatabase.users()
   const movies = new MovieService(
     TestDatabase.database,
@@ -36,7 +91,7 @@ test('TMDB imports remain pending and concurrent duplicates share one catalogue 
   )
   const results = await Promise.all(friends.map((u) => movies.submit(u.id, { tmdbId: 157336 })))
   assert.equal(new Set(results.map((m) => m.id)).size, 1)
-  assert.equal(results[0]!.approval_status, 'pending')
+  assert.equal(results[0]!.approval_status, 'approved')
   assert.equal(results[0]!.release_year, 2014)
   assert.equal((await pool.query('SELECT count(*) FROM movies')).rows[0].count, '1')
 })
@@ -69,7 +124,7 @@ test('admin approval and eligibility changes reopen affected nominations, leavin
   const a = await movies.submit(friends[0]!.id, { title: 'Manual film', releaseYear: 2025 })
   const rounds = TestDatabase.rounds()
   const { week } = await rounds.current()
-  await assert.rejects(rounds.respond(friends[0]!.id, week, a.id), { code: 'MOVIE_NOT_ELIGIBLE' })
+  await rounds.respond(friends[0]!.id, week, a.id)
   await movies.update(friends[0]!.id, a.id, { approvalStatus: 'approved', overview: 'Completed' })
   for (const u of friends) await rounds.respond(u.id, week, a.id)
   await movies.update(friends[0]!.id, a.id, { eligible: false })
@@ -94,10 +149,7 @@ test('pending duplicates can merge into an existing movie without duplicating ca
     new Clock(() => new Date('2026-11-09T12:00Z')),
   )
   const existing = await TestDatabase.movie('Existing')
-  const pending = await movies.submit(friends[0]!.id, {
-    title: 'Alternate title',
-    releaseYear: 2014,
-  })
+  const pending = await TestDatabase.movie('Alternate title', 'pending')
   assert.equal((await movies.merge(pending.id, existing.id)).id, existing.id)
   assert.equal((await pool.query('SELECT id FROM movies WHERE id=$1', [pending.id])).rowCount, 0)
   await assert.rejects(movies.merge(existing.id, existing.id), { code: 'INVALID_MERGE' })

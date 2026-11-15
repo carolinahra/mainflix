@@ -12,6 +12,8 @@ import type {
   MovieMetadata,
   MovieSearch,
   Language,
+  MovieCategory,
+  MovieBrowse,
 } from '../models/entities.js'
 import {
   AppException,
@@ -29,6 +31,45 @@ export class MovieService {
     private readonly tmdb: Tmdb,
     private readonly clock: Clock,
   ) {}
+  async browse(
+    category: MovieCategory,
+    language: Language,
+    page: number,
+    yearFrom?: number,
+    yearTo?: number,
+  ): Promise<MovieBrowse> {
+    if (category === 'recentlyAdded') {
+      const local = await this.repository.recentlyAdded(21, (page - 1) * 20)
+      return {
+        local: local.slice(0, 20),
+        remote: [],
+        remoteError: null,
+        page,
+        totalPages: local.length > 20 ? page + 1 : page,
+      }
+    }
+    try {
+      const result = await this.tmdb.browse(
+        category,
+        language,
+        page,
+        this.clock.now(),
+        yearFrom,
+        yearTo,
+      )
+      const local = await this.repository.findTmdbIds(result.movies.map((movie) => movie.tmdb_id))
+      return {
+        local,
+        remote: result.movies,
+        remoteError: null,
+        page,
+        totalPages: result.totalPages,
+      }
+    } catch (error: unknown) {
+      if (!(error instanceof AppException)) throw error
+      return { local: [], remote: [], remoteError: error.code, page, totalPages: page }
+    }
+  }
   async search(
     query: string,
     language: Language,
@@ -74,7 +115,7 @@ export class MovieService {
           title: metadata?.title ?? input.title!,
           release_year: metadata?.release_year ?? input.releaseYear ?? null,
           submitted_by: userId,
-          approval_status: 'pending',
+          approval_status: 'approved',
         },
         db,
       )

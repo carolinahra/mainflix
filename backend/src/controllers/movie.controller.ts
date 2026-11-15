@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { MovieService } from '../services/movie.service.js'
 import type { ReviewService } from '../services/review.service.js'
 import { Http, type HttpRequest, type HttpResponse } from '../shared/http.js'
+import { movieCategories } from '../models/entities.js'
 export class MovieController {
   readonly router: ExpressRouter = Router()
   constructor(
@@ -11,9 +12,27 @@ export class MovieController {
   ) {
     this.router.get('/', this.search.bind(this))
     this.router.post('/', this.submit.bind(this))
+    this.router.get('/browse', this.browse.bind(this))
     this.router.get('/:id', this.detail.bind(this))
     this.router.put('/:id/watched', this.watched.bind(this))
     this.router.put('/:id/review', this.review.bind(this))
+  }
+  private async browse(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const category = z.enum(movieCategories).parse(req.query.category)
+    const page = z.coerce.number().int().min(1).max(500).default(1).parse(req.query.page)
+    const years = z
+      .object({
+        yearFrom: z.coerce.number().int().min(1870).max(2200).optional(),
+        yearTo: z.coerce.number().int().min(1870).max(2200).optional(),
+      })
+      .refine(
+        ({ yearFrom, yearTo }) =>
+          yearFrom === undefined || yearTo === undefined || yearFrom <= yearTo,
+      )
+      .parse(req.query)
+    res.json(
+      await this.movies.browse(category, Http.language(req), page, years.yearFrom, years.yearTo),
+    )
   }
   private async search(req: HttpRequest, res: HttpResponse): Promise<void> {
     const q: string = z.string().trim().max(200).default('').parse(req.query.q)
