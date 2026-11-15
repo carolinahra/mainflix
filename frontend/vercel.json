@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://mainflix.vercel.app/api/:path*"
+      "destination": "https://mainflix-backend.vercel.app/api/:path*"
     }
   ]
 }
