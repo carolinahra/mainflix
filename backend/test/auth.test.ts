@@ -50,9 +50,12 @@ test('optional email migration preserves existing accounts and sessions and runs
   await pool.query('ALTER TABLE users ALTER COLUMN email SET NOT NULL')
   await pool.query('DELETE FROM schema_migrations WHERE version = 3')
   const sources = await Promise.all(
-    ['001_initial.sql', '002_usernames.sql', '003_optional_email.sql'].map((file) =>
-      readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8'),
-    ),
+    [
+      '001_initial.sql',
+      '002_usernames.sql',
+      '003_optional_email.sql',
+      '004_half_point_reviews.sql',
+    ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
   )
   await TestDatabase.database.migrate(sources)
   await TestDatabase.database.migrate(sources)
@@ -103,9 +106,12 @@ test('username migration preserves existing accounts and can run repeatedly', as
   await pool.query('ALTER TABLE users DROP COLUMN username')
   await pool.query('DELETE FROM schema_migrations WHERE version = 2')
   const sources = await Promise.all(
-    ['001_initial.sql', '002_usernames.sql', '003_optional_email.sql'].map((file) =>
-      readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8'),
-    ),
+    [
+      '001_initial.sql',
+      '002_usernames.sql',
+      '003_optional_email.sql',
+      '004_half_point_reviews.sql',
+    ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
   )
   await TestDatabase.database.migrate(sources)
   await TestDatabase.database.migrate(sources)

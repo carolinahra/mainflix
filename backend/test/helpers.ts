@@ -29,9 +29,12 @@ export class TestDatabase {
       throw new Error('TEST_DATABASE_URL must point to a database ending in _test')
     await this.database.migrate(
       await Promise.all(
-        ['001_initial.sql', '002_usernames.sql', '003_optional_email.sql'].map((file) =>
-          readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8'),
-        ),
+        [
+          '001_initial.sql',
+          '002_usernames.sql',
+          '003_optional_email.sql',
+          '004_half_point_reviews.sql',
+        ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )
     await this.pool.query('TRUNCATE users, movies, rounds, rate_limits RESTART IDENTITY CASCADE')
