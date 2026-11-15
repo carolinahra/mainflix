@@ -74,7 +74,7 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 - Winning excludes the movie from later draws immediately. Personal watched progress is independent. Only the admin can restore eligibility; saved winners never change.
 - Losing nominations do not carry over, but their movies stay in the catalogue.
 - TMDB imports and manual additions are immediately eligible for nomination. Manual additions are the fallback for films missing from TMDB. Existing rejected/excluded films stay blocked; admins can still manage metadata and eligibility or resolve older pending entries.
-- Each user can mark any approved catalogue movie personally watched, including movies seen before Mainflix; doing so does not remove eligibility. One editable review per user/movie, integer 1–5 stars and optional text. Viewing progress is required to review, and survives reselection.
+- Each user can mark any approved catalogue movie personally watched, including movies seen before Mainflix; doing so does not remove eligibility. One editable review per user/movie, 0.5–5 diamonds in half-point steps and optional text. Viewing progress is required to review, and survives reselection. The Reviews tab groups everyone’s diamond ratings and text by movie, with recently reviewed movies first.
 - Old rounds/reviews persist. No cron task is needed: the API determines the current round from server time on each request; the frontend refreshes every five seconds while visible.
 
 ## Password recovery
@@ -106,6 +106,7 @@ All routes except health, login, reset, and logout require a session cookie. `/a
 | PUT | `/api/rounds/:week/response` | `{movieId:number}`, `{movieId:null}` to skip, or `{tmdbId:number}` to import and nominate atomically; optional `language=es` |
 | POST | `/api/rounds/:week/draw` | Saved shared result; `week` is `YYYY-MM-DD` |
 | GET | `/api/movies?q=title&language=es&limit=30&offset=0` | `{local,remote,remoteError}` |
+| GET | `/api/movies/reviews?limit=30&offset=0` | Reviewed movies, newest review first; each includes all member reviews |
 | GET | `/api/movies/browse?category=horror&language=es&page=1` | `{local,remote,remoteError,page,totalPages}`; categories: `featured`, `romanticComedy`, `horror`, `comedy`, `recentlyAdded`, `newReleases`, `popular`, `action`, `scienceFiction`, `drama`, `thriller`, `animation`, `adventure`, `fantasy`, `romance`, `barbie`; pages 1–500; optional inclusive `yearFrom`/`yearTo` filters for TMDB discovery |
 | POST | `/api/movies?language=es` | `{tmdbId}` or `{title,releaseYear?}` → approved movie |
 | GET | `/api/movies/:id` | Movie, personal watched records and reviews |

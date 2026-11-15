@@ -28,9 +28,12 @@ class BrowserFixture {
     assert.ok(result.rows[0]?.name.endsWith('_test'), 'Refusing to reset a non-test database')
     await this.database.migrate(
       await Promise.all(
-        ['001_initial.sql', '002_usernames.sql', '003_optional_email.sql'].map((file) =>
-          readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8'),
-        ),
+        [
+          '001_initial.sql',
+          '002_usernames.sql',
+          '003_optional_email.sql',
+          '004_half_point_reviews.sql',
+        ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )
     await sql`TRUNCATE users,movies,rounds,rate_limits RESTART IDENTITY CASCADE`.execute(
@@ -408,11 +411,110 @@ test(
       await admin.emulateMedia({ reducedMotion: 'no-preference' })
       await admin.locator('.winner .text-button').click()
       await admin.getByRole('button', { name: "I've watched it", exact: true }).click()
+      const picker = admin.locator('.diamond-picker')
+      await picker.waitFor()
+      assert.equal(await picker.locator('input[type="radio"]').count(), 10)
+      assert.equal(await picker.locator('input:checked').count(), 0)
+      await picker.getByRole('radio', { name: '0.5/5', exact: true }).check()
+      await picker.locator('label').nth(6).hover()
+      assert.equal(
+        await picker.getByRole('radio', { name: '0.5/5', exact: true }).isChecked(),
+        true,
+      )
+      assert.equal(
+        await picker
+          .locator('.diamond-half')
+          .nth(6)
+          .evaluate((el) => getComputedStyle(el).opacity),
+        '1',
+      )
+      assert.equal(
+        await picker
+          .locator('.diamond-half')
+          .nth(7)
+          .evaluate((el) => getComputedStyle(el).opacity),
+        '0.35',
+      )
+      await admin.getByLabel('Your review (optional)', { exact: true }).hover()
+      assert.equal(
+        await picker
+          .locator('.diamond-half')
+          .nth(1)
+          .evaluate((el) => getComputedStyle(el).opacity),
+        '0.35',
+      )
+      await picker.getByRole('radio', { name: '5/5', exact: true }).check()
+      await picker.getByRole('radio', { name: '5/5', exact: true }).press('ArrowLeft')
+      assert.equal(
+        await picker.getByRole('radio', { name: '4.5/5', exact: true }).isChecked(),
+        true,
+      )
       await admin.getByLabel('Your review (optional)', { exact: true }).fill('A great movie night.')
       await admin.getByRole('button', { name: 'Save review', exact: true }).click()
       await admin.locator('.review').getByText('A great movie night.', { exact: true }).waitFor()
+      assert.equal(await admin.locator('.review [aria-label="4.5/5"] .rating-diamond').count(), 5)
+      assert.equal(
+        await admin
+          .locator('.review .rating-diamond img')
+          .last()
+          .evaluate((el) => getComputedStyle(el).clipPath),
+        'inset(0px 50% 0px 0px)',
+      )
+      await admin.screenshot({ path: '/tmp/mainflix-selected-review-desktop.png', fullPage: true })
+      await admin.setViewportSize({ width: 375, height: 667 })
+      assert.equal(
+        await admin.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await admin.screenshot({ path: '/tmp/mainflix-selected-review-mobile.png', fullPage: true })
+      await admin.setViewportSize({ width: 1280, height: 900 })
+      await admin.reload()
+      await admin.locator('.winner .text-button').click()
+      await admin.locator('.review').getByText('A great movie night.', { exact: true }).waitFor()
+      assert.equal(await admin.getByRole('radio', { name: '4.5/5', exact: true }).isChecked(), true)
+      await pages[0]!.locator('.winner .text-button').click()
+      await pages[0]!
+        .locator('.review')
+        .getByText('A great movie night.', { exact: true })
+        .waitFor()
+      assert.equal(await pages[0]!.locator('.review strong').textContent(), 'Admin')
+      await pages[0]!.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await pages[0]!.getByRole('radio', { name: '3.5/5', exact: true }).check()
+      await pages[0]!
+        .getByLabel('Your review (optional)', { exact: true })
+        .fill('Friend1 shared review.')
+      await pages[0]!.getByRole('button', { name: 'Save review', exact: true }).click()
+      await pages[0]!
+        .locator('.review')
+        .getByText('Friend1 shared review.', { exact: true })
+        .waitFor()
       await admin.getByRole('button', { name: 'Close ×', exact: true }).click()
+      await admin.getByRole('button', { name: 'Reviews', exact: true }).click()
+      await admin
+        .locator('.reviewed-movie')
+        .getByText('Friend1 shared review.', { exact: true })
+        .waitFor()
+      assert.equal(await admin.locator('.reviewed-movie').count(), 1)
+      assert.equal(await admin.locator('.reviewed-movie .review').count(), 2)
+      await admin.getByRole('button', { name: 'Rate movie', exact: true }).click()
+      await admin.getByRole('radio', { name: '5/5', exact: true }).check()
+      await admin.getByRole('button', { name: 'Save review', exact: true }).click()
+      await admin.getByRole('dialog').getByRole('img', { name: '5/5', exact: true }).waitFor()
+      await admin.getByRole('button', { name: 'Close ×', exact: true }).click()
+      await admin
+        .locator('.reviewed-movie')
+        .getByRole('img', { name: '5/5', exact: true })
+        .waitFor()
+      await admin.locator('main').screenshot({ path: '/tmp/mainflix-reviews-desktop.png' })
+      await admin.setViewportSize({ width: 320, height: 568 })
+      assert.equal(
+        await admin.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await admin.screenshot({ path: '/tmp/mainflix-reviews-mobile.png', fullPage: true })
+      await admin.setViewportSize({ width: 1280, height: 900 })
       await admin.getByLabel('Language / Idioma').selectOption('es')
+      await admin.getByRole('heading', { name: 'Reseñas', exact: true }).waitFor()
       await admin.getByRole('button', { name: 'Historial', exact: true }).click()
       await admin.getByRole('heading', { name: 'Historial', exact: true }).waitFor()
       await admin.screenshot({ path: '/tmp/mainflix-desktop.png', fullPage: true })
@@ -514,6 +616,7 @@ test(
         .click()
       await page.getByRole('dialog').waitFor()
       await page.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await page.getByRole('radio', { name: '0.5/5', exact: true }).check()
       await page.getByLabel('Your review (optional)', { exact: true }).fill('An iPhone SE review.')
       await page.getByRole('button', { name: 'Save review', exact: true }).click()
       await page.locator('.review').getByText('An iPhone SE review.', { exact: true }).waitFor()

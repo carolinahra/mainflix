@@ -14,11 +14,13 @@ import type {
   MoviePatch,
   MovieCategory,
   MovieBrowse,
+  Review,
+  ReviewedMovie,
 } from '../../backend/src/models/entities.js'
 
 type Film = Serialized<Movie>
 type Detail = { movie: Film } & Serialized<MovieReviews>
-type Tab = 'week' | 'catalogue' | 'history' | 'admin'
+type Tab = 'week' | 'catalogue' | 'history' | 'reviews' | 'admin'
 interface Props {
   container: Container
 }
@@ -35,6 +37,7 @@ interface State {
   query: string
   detail: Detail | null
   history: Serialized<HistoryEntry>[]
+  reviewed: Serialized<ReviewedMovie>[]
   pending: Film[]
   accounts: User[]
   message: TranslationKey | null
@@ -73,6 +76,7 @@ export class Mainflix extends Component<Props, State> {
     query: '',
     detail: null,
     history: [],
+    reviewed: [],
     pending: [],
     accounts: [],
     message: null,
@@ -124,6 +128,7 @@ export class Mainflix extends Component<Props, State> {
       browseLoading: {},
       genre: 'action',
       history: [],
+      reviewed: [],
       pending: [],
       accounts: [],
       detail: null,
@@ -237,6 +242,7 @@ export class Mainflix extends Component<Props, State> {
   private navigate(tab: Tab): void {
     this.setState({ tab, error: null, message: null })
     if (tab === 'history') void this.loadHistory(false)
+    if (tab === 'reviews') void this.loadReviews(false)
     if (tab === 'admin') void this.loadAdmin()
     if (tab === 'catalogue' || tab === 'week') void this.search(this.state.query)
   }
@@ -678,7 +684,13 @@ export class Mainflix extends Component<Props, State> {
         rating: Number(data.get('rating')),
         text: data.get('text'),
       })
-      this.setState({ detail: await this.props.container.api.request<Detail>(`/movies/${id}`) })
+      const detail = await this.props.container.api.request<Detail>(`/movies/${id}`)
+      this.setState((state) => ({
+        detail,
+        reviewed: state.reviewed.map((entry) =>
+          entry.movie.id === id ? { ...entry, reviews: detail.reviews } : entry,
+        ),
+      }))
     })
   }
   private async loadHistory(more: boolean): Promise<void> {
@@ -687,6 +699,16 @@ export class Mainflix extends Component<Props, State> {
         `/rounds?limit=30&offset=${more ? this.state.history.length : 0}`,
       )
       this.setState((state) => ({ history: more ? [...state.history, ...rows] : rows }))
+    })
+  }
+  private async loadReviews(more: boolean): Promise<void> {
+    const userId = this.state.user?.id
+    await this.perform(async (): Promise<void> => {
+      const rows: Serialized<ReviewedMovie>[] = await this.props.container.api.request(
+        `/movies/reviews?limit=30&offset=${more ? this.state.reviewed.length : 0}`,
+      )
+      if (this.state.user?.id === userId)
+        this.setState((state) => ({ reviewed: more ? [...state.reviewed, ...rows] : rows }))
     })
   }
   private async loadAdmin(): Promise<void> {
@@ -1197,6 +1219,44 @@ export class Mainflix extends Component<Props, State> {
       </section>
     )
   }
+  private renderReviews(): ReactNode {
+    return (
+      <section>
+        <h1>{this.t('reviews')}</h1>
+        {!this.state.reviewed.length && (
+          <p className="muted">{this.t(this.state.busy ? 'loading' : 'noReviews')}</p>
+        )}
+        {this.state.reviewed.map(({ movie, reviews }) => (
+          <section
+            className="reviewed-movie"
+            key={movie.id}
+            aria-labelledby={`reviewed-${movie.id}`}
+          >
+            <div className="reviewed-movie-heading">
+              {this.renderPoster(movie)}
+              <div>
+                <h2 id={`reviewed-${movie.id}`}>
+                  {movie.title} <small>{movie.release_year}</small>
+                </h2>
+                <button onClick={() => this.openMovie(movie.id)}>{this.t('rateMovie')}</button>
+              </div>
+            </div>
+            {reviews.map((review) => this.renderReview(review))}
+          </section>
+        ))}
+        {this.state.reviewed.length >= 30 && (
+          <button
+            disabled={this.state.busy}
+            onClick={() => {
+              void this.loadReviews(true)
+            }}
+          >
+            {this.t('more')}
+          </button>
+        )}
+      </section>
+    )
+  }
   private renderAdmin(): ReactNode {
     if (!this.state.user?.is_admin) return this.renderWeek()
     return (
@@ -1222,6 +1282,27 @@ export class Mainflix extends Component<Props, State> {
           </article>
         ))}
       </section>
+    )
+  }
+  private renderReview(review: Serialized<Review>): ReactNode {
+    return (
+      <article className="review" key={review.user_id}>
+        <strong>{review.name}</strong>
+        <span role="img" aria-label={`${review.rating}/5`}>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <span className="rating-diamond" key={n} aria-hidden="true">
+              <img
+                src="/art/diamond.png"
+                alt=""
+                style={{
+                  clipPath: `inset(0 ${100 - Math.max(0, Math.min(1, review.rating - n + 1)) * 100}% 0 0)`,
+                }}
+              />
+            </span>
+          ))}
+        </span>
+        <p>{review.text}</p>
+      </article>
     )
   }
   private renderDetail(): ReactNode {
@@ -1252,31 +1333,28 @@ export class Mainflix extends Component<Props, State> {
         )}
         <h3>{this.t('reviews')}</h3>
         {reviews.length ? (
-          reviews.map((review) => (
-            <article className="review" key={review.user_id}>
-              <strong>{review.name}</strong>
-              <span aria-label={`${review.rating}/5`}>
-                {'★'.repeat(review.rating)}
-                {'☆'.repeat(5 - review.rating)}
-              </span>
-              <p>{review.text}</p>
-            </article>
-          ))
+          reviews.map((review) => this.renderReview(review))
         ) : (
           <p className="muted">{this.t('noReviews')}</p>
         )}
         {seen ? (
           <form key={`${movie.id}-${mine?.updated_at ?? 'new'}`} onSubmit={this.review.bind(this)}>
-            <label>
-              {this.t('rating')}
-              <select name="rating" defaultValue={mine?.rating ?? 5}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>
-                    {'★'.repeat(n)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <fieldset className="diamond-picker" disabled={this.state.busy}>
+              <legend>{this.t('rating')}</legend>
+              {Array.from({ length: 10 }, (_, index) => (index + 1) / 2).map((rating) => (
+                <label key={rating} title={`${rating}/5`}>
+                  <input
+                    type="radio"
+                    name="rating"
+                    value={rating}
+                    aria-label={`${rating}/5`}
+                    defaultChecked={rating === mine?.rating}
+                    required
+                  />
+                  <span className="diamond-half" aria-hidden="true" />
+                </label>
+              ))}
+            </fieldset>
             <label>
               {this.t('review')}
               <textarea name="text" maxLength={10000} defaultValue={mine?.text ?? ''} />
@@ -1416,6 +1494,7 @@ export class Mainflix extends Component<Props, State> {
                   'week',
                   'catalogue',
                   'history',
+                  'reviews',
                   ...(this.state.user.is_admin ? ['admin'] : []),
                 ] as Tab[]
               ).map((tab) => (
@@ -1476,6 +1555,8 @@ export class Mainflix extends Component<Props, State> {
                 </>
               ) : this.state.tab === 'history' ? (
                 this.renderHistory()
+              ) : this.state.tab === 'reviews' ? (
+                this.renderReviews()
               ) : (
                 this.renderAdmin()
               )}
