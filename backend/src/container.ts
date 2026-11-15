@@ -113,6 +113,7 @@ export class Container {
       this.movieRepository,
       this.clock,
       this.lottery,
+      this.tmdb,
     ))
   }
   get reviewService(): ReviewService {

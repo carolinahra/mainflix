@@ -3,8 +3,10 @@ import type { Connection } from '../repositories/schema.js'
 import type { RoundRepository } from '../repositories/round.repository.js'
 import type { MovieRepository } from '../repositories/movie.repository.js'
 import type { Clock } from './clock.js'
+import type { Tmdb } from './tmdb.js'
 import type { Lottery } from './lottery.js'
 import type {
+  Language,
   RoundState,
   RoundRow,
   RoundResponse,
@@ -30,6 +32,7 @@ export class RoundService {
     private readonly movies: MovieRepository,
     private readonly clock: Clock,
     private readonly lottery: Lottery,
+    private readonly tmdb: Tmdb,
   ) {}
   private async prepare(db: Connection, expected?: string): Promise<string> {
     await this.database.lockGroup(db)
@@ -58,12 +61,36 @@ export class RoundService {
   async current(): Promise<RoundState> {
     return this.database.transaction(async (db) => this.snapshot(await this.prepare(db), db))
   }
-  async respond(userId: number, week: string, movieId: number | null): Promise<RoundState> {
+  async respond(
+    userId: number,
+    week: string,
+    movieId: number | null,
+    tmdbId?: number,
+    language: Language = 'en',
+  ): Promise<RoundState> {
+    const metadata = tmdbId === undefined ? undefined : await this.tmdb.details(tmdbId, language)
     return this.database.transaction(async (db) => {
       await this.prepare(db, week)
       const state: RoundState = await this.snapshot(week, db)
       if (!state.members.some((member) => member.id === userId)) throw new ForbiddenException()
       if (state.status !== 'collecting') throw new RoundLockedException()
+      if (metadata) {
+        let movie = await this.movies.findTmdb(metadata.tmdb_id, db)
+        if (movie && (!movie.eligible || movie.approval_status === 'rejected'))
+          throw new MovieNotEligibleException()
+        if (!movie)
+          movie = await this.movies.create(
+            {
+              ...metadata,
+              submitted_by: userId,
+              approval_status: 'approved',
+            },
+            db,
+          )
+        else if (movie.approval_status === 'pending')
+          movie = await this.movies.update(movie.id, { approval_status: 'approved' }, db)
+        movieId = movie.id
+      }
       if (movieId !== null) {
         const movie: Movie | undefined = await this.movies.find(movieId, db)
         if (!movie?.eligible || movie.approval_status !== 'approved')

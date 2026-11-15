@@ -35,6 +35,82 @@ class HttpFixture {
   }
 }
 
+test('accepting a TMDB pick nominates atomically and never restores rejected or excluded movies', async () => {
+  const f = new HttpFixture()
+  const friends = await TestDatabase.users()
+  f.container.tmdb = new Tmdb('test', async (input) =>
+    Response.json({
+      id: Number(new URL(String(input)).pathname.split('/').pop()),
+      title: 'Random film',
+      release_date: '2014-11-05',
+    }),
+  )
+  const app = f.container.application.app
+  const { week } = await f.container.roundService.current()
+  // Use a real login so authentication and membership are exercised.
+  const user = await f.container.userService.create(null, 'adminrandom', 'Admin', 'abcdef', true)
+  const cookie = await f.login(user.username, 'abcdef')
+  await TestDatabase.pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [
+    await TestDatabase.passwords.hash('abcdef'),
+    friends[0]!.id,
+  ])
+  const voter = await f.login(friends[0]!.username, 'abcdef')
+  const accept = (tmdbId: number, auth = voter, expectedWeek = week) =>
+    request(app)
+      .put(`/api/rounds/${expectedWeek}/response`)
+      .set('Cookie', auth)
+      .set('Origin', 'http://localhost:5173')
+      .send({ tmdbId })
+  await accept(100, cookie).expect(403)
+  assert.equal((await TestDatabase.pool.query('SELECT count(*) FROM movies')).rows[0].count, '0')
+  const [result] = await Promise.all([accept(100).expect(200), accept(100).expect(200)])
+  const movieId = result.body.responses[0].movie_id
+  assert.equal((await f.container.movieService.find(movieId)).approval_status, 'approved')
+  await accept(100).expect(200)
+  assert.equal((await TestDatabase.pool.query('SELECT count(*) FROM movies')).rows[0].count, '1')
+  await TestDatabase.pool.query("UPDATE movies SET approval_status='rejected' WHERE id=$1", [
+    movieId,
+  ])
+  await accept(100).expect(409)
+  await TestDatabase.pool.query(
+    "UPDATE movies SET approval_status='approved',eligible=false WHERE id=$1",
+    [movieId],
+  )
+  await accept(100).expect(409)
+  await accept(200, voter, '2026-11-02').expect(409)
+  assert.equal((await TestDatabase.pool.query('SELECT count(*) FROM movies')).rows[0].count, '1')
+  await TestDatabase.pool.query('UPDATE movies SET eligible=true WHERE id=$1', [movieId])
+  for (const friend of friends) await f.container.roundService.respond(friend.id, week, movieId)
+  await accept(200).expect(409)
+  assert.equal((await TestDatabase.pool.query('SELECT count(*) FROM movies')).rows[0].count, '1')
+})
+
+test('browse requires authentication and validates categories and pages before calling TMDB', async () => {
+  const f = new HttpFixture()
+  const app = f.container.application.app
+  await request(app).get('/api/movies/browse?category=popular').expect(401)
+  await f.container.userService.create(null, 'browse', 'Browse', 'A long test password!')
+  const cookie = await f.login('browse')
+  for (const query of [
+    'category=unknown',
+    'category=popular&page=0',
+    'category=popular&page=501',
+    'category=popular&page=1.5',
+    'category=action&yearFrom=2000&yearTo=1990',
+    'category=action&yearFrom=1869',
+    'category=action&yearTo=2201',
+    'category=action&yearFrom=invalid',
+  ])
+    await request(app).get(`/api/movies/browse?${query}`).set('Cookie', cookie).expect(400)
+  const result = await request(app)
+    .get('/api/movies/browse?category=recentlyAdded&language=es')
+    .set('Cookie', cookie)
+    .expect(200)
+  assert.deepEqual(result.body.local, [])
+  assert.equal(result.body.page, 1)
+  assert.equal(result.body.remoteError, null)
+})
+
 test('six-character passwords work for provisioning, login, password changes, and resets', async () => {
   const f = new HttpFixture()
   const user = await f.container.userService.create(null, 'shortpass', 'Short password', 'abcdef')

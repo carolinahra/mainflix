@@ -2,6 +2,7 @@ import pg, { type Pool } from 'pg'
 import { readFile } from 'node:fs/promises'
 import { Database } from '../src/repositories/database.js'
 import { Clock } from '../src/services/clock.js'
+import { Tmdb } from '../src/services/tmdb.js'
 import { Lottery } from '../src/services/lottery.js'
 import { RoundService } from '../src/services/round.service.js'
 import { RoundRepository } from '../src/repositories/round.repository.js'
@@ -59,6 +60,7 @@ export class TestDatabase {
       new MovieRepository(this.database),
       new Clock(clock),
       new Lottery(pick),
+      new Tmdb(''),
     )
   }
   static async auth(

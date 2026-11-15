@@ -20,10 +20,20 @@ export class RoundController {
   private async respond(req: HttpRequest, res: HttpResponse): Promise<void> {
     const week: string = Http.week.parse(req.params.week)
     const body = z
-      .object({ movieId: z.number().int().positive().max(2147483647).nullable() })
-      .strict()
+      .union([
+        z.object({ movieId: z.number().int().positive().max(2147483647).nullable() }).strict(),
+        z.object({ tmdbId: z.number().int().positive().max(2147483647) }).strict(),
+      ])
       .parse(req.body)
-    res.json(await this.rounds.respond(Http.user(res).id, week, body.movieId))
+    res.json(
+      await this.rounds.respond(
+        Http.user(res).id,
+        week,
+        'movieId' in body ? body.movieId : null,
+        'tmdbId' in body ? body.tmdbId : undefined,
+        Http.language(req),
+      ),
+    )
   }
   private async draw(req: HttpRequest, res: HttpResponse): Promise<void> {
     res.json(await this.rounds.draw(Http.user(res).id, Http.week.parse(req.params.week)))
