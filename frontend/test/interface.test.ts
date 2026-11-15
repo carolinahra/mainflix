@@ -5,6 +5,144 @@ import { Mainflix } from '../src/app.js'
 import { I18n } from '../src/i18n.js'
 import type { Container } from '../src/container.js'
 
+test('random nomination offers filters and confirmation only while a player can nominate', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false },
+    round: {
+      week: '2026-11-09',
+      status: 'collecting',
+      winner: null,
+      winner_id: null,
+      drawn_by: null,
+      drawn_at: null,
+      ends_at: '2026-11-16T00:00:00Z',
+      responses: [],
+      members: [],
+    },
+  }
+  assert.match(renderToStaticMarkup(app.render()), />Random movie</)
+  app.state.search.remote = [
+    {
+      tmdb_id: 2,
+      title: 'TMDB choice',
+      release_year: 2020,
+      overview: '',
+      poster_path: null,
+    },
+  ]
+  assert.match(renderToStaticMarkup(app.render()), />Nominate</)
+  app.state = {
+    ...app.state,
+    randomOpen: true,
+    randomMovie: {
+      tmdb_id: 1,
+      title: 'Random pick',
+      release_year: 2014,
+      overview: 'A synopsis',
+      poster_path: null,
+    },
+  }
+  const markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /<dialog[^>]*aria-labelledby="random-title"/)
+  assert.match(markup, /From year/)
+  assert.match(markup, /To year/)
+  assert.match(markup, /Random pick/)
+  assert.match(markup, /Accept and nominate/)
+  assert.match(markup, /Try again/)
+  assert.match(markup, /Cancel/)
+  app.state = { ...app.state, user: { ...app.state.user!, is_admin: true } }
+  assert.doesNotMatch(renderToStaticMarkup(app.render()), /Accept and nominate|>Random movie</)
+})
+
+test('discovery features requested films and puts favorite genres before other browsing rows', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('es') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'catalogue',
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false },
+    browse: {
+      featured: {
+        local: [],
+        remote: [
+          {
+            tmdb_id: 1422041,
+            title: 'La bola negra',
+            release_year: 2026,
+            overview: '',
+            poster_path: null,
+          },
+          {
+            tmdb_id: 1522071,
+            title: 'Ruega por nosotras',
+            release_year: 2026,
+            overview: '',
+            poster_path: null,
+          },
+        ],
+        remoteError: null,
+        page: 1,
+        totalPages: 1,
+      },
+      comedy: { local: [], remote: [], remoteError: null, page: 1, totalPages: 1 },
+      popular: {
+        local: [],
+        remote: [
+          {
+            tmdb_id: 1422041,
+            title: 'La bola negra',
+            release_year: 2026,
+            overview: '',
+            poster_path: null,
+          },
+        ],
+        remoteError: null,
+        page: 1,
+        totalPages: 2,
+      },
+    },
+  }
+  const markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /La bola negra/)
+  assert.match(markup, /Ruega por nosotras/)
+  assert.ok(markup.indexOf('Comedia romántica') < markup.indexOf('Terror'))
+  assert.ok(markup.indexOf('Terror') < markup.indexOf('>Comedia<'))
+  assert.match(markup, /Populares en España/)
+  assert.doesNotMatch(markup, /Vuestras imprescindibles|Estrenos en España|popularidad global/)
+  assert.equal((markup.match(/id="browse-popular"/g) ?? []).length, 1)
+  assert.equal((markup.match(/<h3>La bola negra<\/h3>/g) ?? []).length, 1)
+  assert.ok(markup.indexOf('La bola negra') < markup.indexOf('id="movie-catalogue"'))
+  assert.match(markup, /Explorar por género/)
+  assert.match(markup, /id="browse-barbie">Barbie/)
+  assert.match(markup, /id="browse-animation">Animación/)
+})
+
+test('movie search explains missing TMDB configuration separately from an outage', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const container = { i18n: new I18n('en') }
+  const app = new Mainflix({ container: container as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'catalogue',
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false },
+    search: { local: [], remote: [], remoteError: 'TMDB_NOT_CONFIGURED' },
+  }
+  for (const language of ['en', 'es'] as const) {
+    const localized = new I18n(language)
+    container.i18n = localized
+    assert.ok(renderToStaticMarkup(app.render()).includes(localized.t('TMDB_NOT_CONFIGURED')))
+    app.state.search.remoteError = 'TMDB_UNAVAILABLE'
+    assert.ok(renderToStaticMarkup(app.render()).includes(localized.t('tmdbWarning')))
+    app.state.search.remoteError = 'TMDB_NOT_CONFIGURED'
+  }
+})
+
 test('weekly party progress counts actual responses including skips without inventing missing members', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
@@ -29,6 +167,8 @@ test('weekly party progress counts actual responses including skips without inve
   }
   const markup = renderToStaticMarkup(app.render())
   assert.match(markup, /Your next movie night/)
+  assert.match(markup, /id="browse-animation">Animation/)
+  assert.match(markup, /id="browse-barbie">Barbie/)
   assert.match(markup, /<progress[^>]*value="1"[^>]*max="2"/)
   assert.match(markup, /Skipping/)
   assert.match(markup, /Not nominated yet/)

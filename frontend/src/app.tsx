@@ -12,6 +12,8 @@ import type {
   HistoryEntry,
   MovieReviews,
   MoviePatch,
+  MovieCategory,
+  MovieBrowse,
 } from '../../backend/src/models/entities.js'
 
 type Film = Serialized<Movie>
@@ -27,6 +29,9 @@ interface State {
   round: Serialized<RoundState> | null
   tab: Tab
   search: Serialized<MovieSearch>
+  browse: Partial<Record<MovieCategory, Serialized<MovieBrowse>>>
+  browseLoading: Partial<Record<MovieCategory, boolean>>
+  genre: MovieCategory
   query: string
   detail: Detail | null
   history: Serialized<HistoryEntry>[]
@@ -37,14 +42,24 @@ interface State {
   resetToken: string | null
   language: Language
   spinning: boolean
+  randomOpen: boolean
+  randomMovie: MovieMetadata | null
+  randomLoading: boolean
+  randomError: string | null
+  randomCategory: MovieCategory
+  randomFrom: string
+  randomTo: string
 }
 export class Mainflix extends Component<Props, State> {
   private readonly dialog = createRef<HTMLDialogElement>()
+  private readonly randomDialog = createRef<HTMLDialogElement>()
   private readonly roulette = createRef<HTMLDivElement>()
   private poll: ReturnType<typeof setInterval> | undefined
   private debounce: ReturnType<typeof setTimeout> | undefined
   private spinTimer: ReturnType<typeof setTimeout> | undefined
+  private randomController: AbortController | undefined
   private searchController: AbortController | undefined
+  private readonly browseControllers = new Map<MovieCategory, AbortController>()
   override state: State = {
     loading: true,
     busy: false,
@@ -52,6 +67,9 @@ export class Mainflix extends Component<Props, State> {
     round: null,
     tab: 'week',
     search: { local: [], remote: [], remoteError: null },
+    browse: {},
+    browseLoading: {},
+    genre: 'action',
     query: '',
     detail: null,
     history: [],
@@ -62,6 +80,13 @@ export class Mainflix extends Component<Props, State> {
     resetToken: location.hash.startsWith('#reset=') ? location.hash.slice(7) : null,
     language: this.props.container.i18n.current,
     spinning: false,
+    randomOpen: false,
+    randomMovie: null,
+    randomLoading: false,
+    randomError: null,
+    randomCategory: 'popular',
+    randomFrom: '',
+    randomTo: '',
   }
   private t(key: TranslationKey): string {
     return this.props.container.i18n.t(key)
@@ -76,24 +101,40 @@ export class Mainflix extends Component<Props, State> {
     clearInterval(this.poll)
     clearTimeout(this.debounce)
     clearTimeout(this.spinTimer)
+    this.randomController?.abort()
     this.searchController?.abort()
+    this.browseControllers.forEach((controller) => controller.abort())
   }
   private clearSession(): void {
+    this.randomController?.abort()
     this.searchController?.abort()
+    this.browseControllers.forEach((controller) => controller.abort())
+    this.browseControllers.clear()
     clearTimeout(this.debounce)
     clearTimeout(this.spinTimer)
     this.dialog.current?.close()
+    this.randomDialog.current?.close()
     this.setState({
       user: null,
       round: null,
       tab: 'week',
       query: '',
       search: { local: [], remote: [], remoteError: null },
+      browse: {},
+      browseLoading: {},
+      genre: 'action',
       history: [],
       pending: [],
       accounts: [],
       detail: null,
       spinning: false,
+      randomOpen: false,
+      randomMovie: null,
+      randomLoading: false,
+      randomError: null,
+      randomCategory: 'popular',
+      randomFrom: '',
+      randomTo: '',
     })
   }
   private async initialize(): Promise<void> {
@@ -103,6 +144,7 @@ export class Mainflix extends Component<Props, State> {
       this.setState({ user })
       await this.refreshRound()
       await this.search('')
+      this.loadDiscovery()
     } catch (error: unknown) {
       if (!(error instanceof ApiException && error.status === 401))
         this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
@@ -150,6 +192,7 @@ export class Mainflix extends Component<Props, State> {
       this.setState({ user })
       await this.refreshRound()
       await this.search('')
+      this.loadDiscovery()
     })
   }
   private logout(): void {
@@ -182,9 +225,14 @@ export class Mainflix extends Component<Props, State> {
   }
   private language(event: ChangeEvent<HTMLSelectElement>): void {
     const language: Language = event.target.value === 'es' ? 'es' : 'en'
+    this.randomController?.abort()
     this.props.container.i18n.current = language
-    this.setState({ language })
-    if (this.state.user) void this.search(this.state.query)
+    this.setState({ randomMovie: null, randomLoading: false, randomError: null })
+    this.setState({ language }, (): void => {
+      if (this.state.user) void this.search(this.state.query)
+      this.browseControllers.forEach((controller) => controller.abort())
+      this.setState({ browse: {}, browseLoading: {} }, () => this.loadDiscovery())
+    })
   }
   private navigate(tab: Tab): void {
     this.setState({ tab, error: null, message: null })
@@ -221,6 +269,323 @@ export class Mainflix extends Component<Props, State> {
       if (!controller.signal.aborted)
         this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
     }
+  }
+  private loadDiscovery(): void {
+    if (!this.state.user) return
+    const categories: MovieCategory[] = [
+      'featured',
+      'romanticComedy',
+      'horror',
+      'comedy',
+      'barbie',
+      'animation',
+      'recentlyAdded',
+      'newReleases',
+      'popular',
+      this.state.genre,
+    ]
+    categories.forEach((category) => {
+      void this.loadBrowse(category)
+    })
+  }
+  private async loadBrowse(category: MovieCategory, more: boolean = false): Promise<void> {
+    this.browseControllers.get(category)?.abort()
+    const controller = new AbortController()
+    this.browseControllers.set(category, controller)
+    const page = more ? (this.state.browse[category]?.page ?? 0) + 1 : 1
+    this.setState((state) => ({ browseLoading: { ...state.browseLoading, [category]: true } }))
+    try {
+      const result: Serialized<MovieBrowse> = await this.props.container.api.request(
+        `/movies/browse?category=${category}&language=${this.state.language}&page=${page}`,
+        'GET',
+        undefined,
+        controller.signal,
+      )
+      if (controller.signal.aborted) return
+      this.setState((state) => {
+        const previous = more ? state.browse[category] : undefined
+        return {
+          browse: {
+            ...state.browse,
+            [category]: {
+              ...result,
+              page: result.remoteError && previous ? previous.page : result.page,
+              totalPages: result.remoteError && previous ? previous.totalPages : result.totalPages,
+              local: [
+                ...new Map(
+                  [...(previous?.local ?? []), ...result.local].map((movie) => [movie.id, movie]),
+                ).values(),
+              ],
+              remote: [
+                ...new Map(
+                  [...(previous?.remote ?? []), ...result.remote].map((movie) => [
+                    movie.tmdb_id,
+                    movie,
+                  ]),
+                ).values(),
+              ],
+            },
+          },
+        }
+      })
+    } catch (error: unknown) {
+      if (controller.signal.aborted) return
+      if (error instanceof ApiException && error.status === 401) {
+        this.clearSession()
+        return
+      }
+      this.setState((state) => ({
+        browse: {
+          ...state.browse,
+          [category]: {
+            ...(state.browse[category] ?? { local: [], remote: [], page: 0, totalPages: 1 }),
+            remoteError: error instanceof ApiException ? error.code : 'genericError',
+          },
+        },
+      }))
+    } finally {
+      if (!controller.signal.aborted)
+        this.setState((state) => ({ browseLoading: { ...state.browseLoading, [category]: false } }))
+    }
+  }
+  private cancelRandom(): void {
+    this.randomController?.abort()
+    this.randomDialog.current?.close()
+    this.setState(
+      { randomOpen: false, randomMovie: null, randomLoading: false, randomError: null },
+      () => document.getElementById('random-trigger')?.focus(),
+    )
+  }
+  private async pickRandom(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    this.randomController?.abort()
+    const controller = new AbortController()
+    this.randomController = controller
+    const { randomCategory, randomFrom, randomTo, randomMovie, language } = this.state
+    if (randomFrom && randomTo && Number(randomFrom) > Number(randomTo)) {
+      this.setState({ randomError: 'VALIDATION_ERROR' })
+      return
+    }
+    this.setState({ randomLoading: true, randomError: null })
+    const params = new URLSearchParams({ category: randomCategory, language })
+    if (randomFrom) params.set('yearFrom', randomFrom)
+    if (randomTo || randomFrom) params.set('yearTo', randomTo || randomFrom)
+    try {
+      const first = await this.props.container.api.request<Serialized<MovieBrowse>>(
+        `/movies/browse?${params}&page=1`,
+        'GET',
+        undefined,
+        controller.signal,
+      )
+      if (controller.signal.aborted) return
+      if (first.remoteError) throw new ApiException(first.remoteError, 503)
+      // shortcut: TMDB exposes at most 500 pages; use a larger catalogue for exhaustive sampling.
+      const page = Math.floor(Math.random() * Math.max(first.totalPages, 1)) + 1
+      const result =
+        page === 1
+          ? first
+          : await this.props.container.api.request<Serialized<MovieBrowse>>(
+              `/movies/browse?${params}&page=${page}`,
+              'GET',
+              undefined,
+              controller.signal,
+            )
+      if (controller.signal.aborted) return
+      if (result.remoteError) throw new ApiException(result.remoteError, 503)
+      const available = (browse: Serialized<MovieBrowse>): MovieMetadata[] =>
+        browse.remote.filter((movie) => {
+          const local = browse.local.find((local) => local.tmdb_id === movie.tmdb_id)
+          return (
+            movie.tmdb_id !== randomMovie?.tmdb_id &&
+            (!local || (local.eligible && local.approval_status !== 'rejected'))
+          )
+        })
+      const candidates = available(result)
+      if (!candidates.length && page !== 1) candidates.push(...available(first))
+      if (!candidates.length)
+        this.setState({ randomError: randomMovie ? 'randomNoOther' : 'noMovies' })
+      else
+        this.setState({ randomMovie: candidates[Math.floor(Math.random() * candidates.length)]! })
+    } catch (error: unknown) {
+      if (!controller.signal.aborted)
+        this.setState({ randomError: error instanceof ApiException ? error.code : 'genericError' })
+    } finally {
+      if (!controller.signal.aborted) this.setState({ randomLoading: false })
+    }
+  }
+  private nominateTmdb(tmdbId: number): void {
+    const { round, language } = this.state
+    if (!round) return
+    void this.perform(async () => {
+      const updated = await this.props.container.api.request<Serialized<RoundState>>(
+        `/rounds/${round.week}/response?language=${language}`,
+        'PUT',
+        { tmdbId },
+      )
+      this.setState({ round: updated, message: 'nominated' })
+      this.cancelRandom()
+      await this.search(this.state.query)
+      this.loadDiscovery()
+    })
+  }
+  private renderRandom(): ReactNode {
+    if (this.state.user?.is_admin || this.state.round?.status !== 'collecting') return null
+    const { randomMovie, randomLoading, busy } = this.state
+    const categories: MovieCategory[] = [
+      'popular',
+      'romanticComedy',
+      'horror',
+      'comedy',
+      'action',
+      'scienceFiction',
+      'drama',
+      'thriller',
+      'animation',
+      'adventure',
+      'fantasy',
+      'romance',
+    ]
+    return (
+      <section className="random-picker" aria-label={this.t('randomMovie')}>
+        <button
+          id="random-trigger"
+          className="primary random-trigger"
+          aria-expanded={this.state.randomOpen}
+          aria-haspopup="dialog"
+          aria-controls="random-options"
+          disabled={busy}
+          onClick={() =>
+            this.setState({ randomOpen: true, error: null }, () =>
+              this.randomDialog.current?.showModal(),
+            )
+          }
+        >
+          <img src="/art/diamond.png" alt="" width="24" height="24" />
+          {this.t('randomMovie')}
+        </button>
+        {this.state.randomOpen && (
+          <dialog
+            id="random-options"
+            ref={this.randomDialog}
+            aria-labelledby="random-title"
+            onCancel={(event) => {
+              event.preventDefault()
+              if (!busy) this.cancelRandom()
+            }}
+            onClick={(event) => {
+              if (busy || event.target !== event.currentTarget) return
+              const bounds = event.currentTarget.getBoundingClientRect()
+              if (
+                event.clientX < bounds.left ||
+                event.clientX > bounds.right ||
+                event.clientY < bounds.top ||
+                event.clientY > bounds.bottom
+              )
+                this.cancelRandom()
+            }}
+          >
+            <button className="close" disabled={busy} onClick={() => this.cancelRandom()}>
+              {this.t('close')} ×
+            </button>
+            <h2 id="random-title">{this.t('randomMovie')}</h2>
+            {this.state.error && (
+              <p className="notice error" role="alert">
+                {this.props.container.i18n.error(this.state.error)}
+              </p>
+            )}
+            <form
+              onSubmit={(event) => {
+                void this.pickRandom(event)
+              }}
+            >
+              <fieldset disabled={randomLoading || busy}>
+                <legend>{this.t('randomFilters')}</legend>
+                <label>
+                  {this.t('randomCategory')}
+                  <select
+                    aria-label={this.t('randomCategory')}
+                    value={this.state.randomCategory}
+                    onChange={(event) =>
+                      this.setState({
+                        randomCategory: event.target.value as MovieCategory,
+                        randomMovie: null,
+                        randomError: null,
+                      })
+                    }
+                  >
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {this.t(category)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {this.t('randomFrom')}
+                  <input
+                    type="number"
+                    min="1870"
+                    max="2200"
+                    step="1"
+                    value={this.state.randomFrom}
+                    onChange={(event) =>
+                      this.setState({
+                        randomFrom: event.target.value,
+                        randomMovie: null,
+                        randomError: null,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  {this.t('randomTo')}
+                  <input
+                    type="number"
+                    min={this.state.randomFrom || '1870'}
+                    max="2200"
+                    step="1"
+                    value={this.state.randomTo}
+                    onChange={(event) =>
+                      this.setState({
+                        randomTo: event.target.value,
+                        randomMovie: null,
+                        randomError: null,
+                      })
+                    }
+                  />
+                </label>
+                <p className="muted">{this.t('randomYearHint')}</p>
+                <button type="submit">{this.t(randomMovie ? 'retry' : 'randomChoose')}</button>
+              </fieldset>
+            </form>
+            <div aria-live="polite" aria-busy={randomLoading}>
+              {randomLoading && <p>{this.t('loading')}</p>}
+              {this.state.randomError && (
+                <p role="alert">{this.props.container.i18n.error(this.state.randomError)}</p>
+              )}
+              {randomMovie && (
+                <article className="random-result">
+                  {this.renderPoster(randomMovie)}
+                  <h3>{randomMovie.title}</h3>
+                  <p className="muted">{randomMovie.release_year}</p>
+                  <p>{randomMovie.overview}</p>
+                  <button
+                    className="primary"
+                    disabled={busy || randomLoading}
+                    onClick={() => this.nominateTmdb(randomMovie.tmdb_id)}
+                  >
+                    {this.t('randomAccept')}
+                  </button>
+                </article>
+              )}
+            </div>
+            <button disabled={busy} onClick={() => this.cancelRandom()}>
+              {this.t('cancel')}
+            </button>
+          </dialog>
+        )}
+      </section>
+    )
   }
   private nominate(movieId: number | null): void {
     const week: string | undefined = this.state.round?.week
@@ -270,6 +635,7 @@ export class Mainflix extends Component<Props, State> {
       form.reset()
       this.setState({ message: 'submitted' })
       await this.search(this.state.query)
+      this.loadDiscovery()
     })
   }
   private importMovie(tmdbId: number): void {
@@ -279,6 +645,7 @@ export class Mainflix extends Component<Props, State> {
       })
       this.setState({ message: 'submitted' })
       await this.search(this.state.query)
+      this.loadDiscovery()
     })
   }
   private openMovie(id: number): void {
@@ -346,6 +713,7 @@ export class Mainflix extends Component<Props, State> {
       }))
       await this.refreshRound()
       await this.search(this.state.query)
+      this.loadDiscovery()
     })
   }
   private editMovie(event: FormEvent<HTMLFormElement>, id: number): void {
@@ -368,6 +736,7 @@ export class Mainflix extends Component<Props, State> {
       this.closeDetail()
       this.setState((state) => ({ pending: state.pending.filter((m) => m.id !== id) }))
       await this.search(this.state.query)
+      this.loadDiscovery()
     })
   }
   private resetLink(id: number): void {
@@ -426,9 +795,128 @@ export class Mainflix extends Component<Props, State> {
       </article>
     )
   }
+  private renderRemoteCard(movie: MovieMetadata): ReactNode {
+    const canNominate = !this.state.user?.is_admin && this.state.round?.status === 'collecting'
+    return (
+      <article className="movie-card" key={`tmdb-${movie.tmdb_id}`}>
+        {this.renderPoster(movie)}
+        <h3>{movie.title}</h3>
+        <p className="muted">{movie.release_year} · TMDB</p>
+        <button
+          disabled={this.state.busy}
+          onClick={(): void =>
+            canNominate ? this.nominateTmdb(movie.tmdb_id) : this.importMovie(movie.tmdb_id)
+          }
+        >
+          {this.t(canNominate ? 'nominate' : 'import')}
+        </button>
+      </article>
+    )
+  }
+  private renderBrowseRow(category: MovieCategory): ReactNode {
+    const result = this.state.browse[category]
+    const pinned = category === 'popular' ? this.state.browse.featured : undefined
+    const localMovies = [...(result?.local ?? []), ...(pinned?.local ?? [])]
+    const remoteMovies = [
+      ...new Map(
+        [...(pinned?.remote ?? []), ...(result?.remote ?? [])].map((movie) => [
+          movie.tmdb_id,
+          movie,
+        ]),
+      ).values(),
+    ]
+    const loading = this.state.browseLoading[category] ?? false
+    return (
+      <section
+        className={`browse-section ${category === 'popular' ? 'featured-section' : ''}`}
+        key={category}
+        aria-labelledby={`browse-${category}`}
+      >
+        <h2 id={`browse-${category}`}>{this.t(category)}</h2>
+        <div className="movie-row" role="region" aria-label={this.t(category)} tabIndex={0}>
+          {category === 'recentlyAdded'
+            ? localMovies.map((movie) => this.renderCard(movie))
+            : remoteMovies.map((movie) => {
+                const local = localMovies.find((local) => local.tmdb_id === movie.tmdb_id)
+                return local ? this.renderCard(local) : this.renderRemoteCard(movie)
+              })}
+        </div>
+        {(!result || loading) && (
+          <p role="status" className="muted">
+            {this.t('loading')}
+          </p>
+        )}
+        {result?.remoteError && (
+          <p role="status" className="muted">
+            {this.props.container.i18n.error(result.remoteError)}
+          </p>
+        )}
+        {result &&
+          !loading &&
+          !result.remoteError &&
+          !localMovies.length &&
+          !remoteMovies.length && <p className="muted">{this.t('noMovies')}</p>}
+        {result && (result.remoteError || result.page < result.totalPages) && (
+          <button
+            disabled={loading}
+            onClick={() => {
+              void this.loadBrowse(category, result.page > 0 && result.page < result.totalPages)
+            }}
+          >
+            {this.t(result.remoteError ? 'retry' : 'more')}
+          </button>
+        )}
+      </section>
+    )
+  }
+  private renderDiscovery(): ReactNode {
+    const favorites: MovieCategory[] = [
+      'romanticComedy',
+      'horror',
+      'comedy',
+      'barbie',
+      'animation',
+      'recentlyAdded',
+      'newReleases',
+    ]
+    const genres: MovieCategory[] = [
+      'action',
+      'scienceFiction',
+      'drama',
+      'thriller',
+      'adventure',
+      'fantasy',
+      'romance',
+    ]
+    return (
+      <div className="discovery">
+        {favorites.map((category) => this.renderBrowseRow(category))}
+        <label className="genre-picker">
+          {this.t('browseGenre')}
+          <select
+            aria-label={this.t('browseGenre')}
+            value={this.state.genre}
+            onChange={(event) => {
+              const genre = event.target.value as MovieCategory
+              this.setState({ genre })
+              void this.loadBrowse(genre)
+            }}
+          >
+            {genres.map((genre) => (
+              <option key={genre} value={genre}>
+                {this.t(genre)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {this.renderBrowseRow(this.state.genre)}
+      </div>
+    )
+  }
   private renderSearch(): ReactNode {
     return (
       <section className="catalogue-section" id="movie-catalogue">
+        {this.renderRandom()}
         <h2>{this.t('search')}</h2>
         <label>
           {this.t('search')}
@@ -441,7 +929,11 @@ export class Mainflix extends Component<Props, State> {
         </label>
         {this.state.search.remoteError && (
           <p role="status" className="muted">
-            {this.t('tmdbWarning')}
+            {this.t(
+              this.state.search.remoteError === 'TMDB_NOT_CONFIGURED'
+                ? 'TMDB_NOT_CONFIGURED'
+                : 'tmdbWarning',
+            )}
           </p>
         )}
         <div className="movie-grid">
@@ -462,19 +954,7 @@ export class Mainflix extends Component<Props, State> {
             .filter(
               (movie) => !this.state.search.local.some((local) => local.tmdb_id === movie.tmdb_id),
             )
-            .map((movie: MovieMetadata) => (
-              <article className="movie-card" key={`tmdb-${movie.tmdb_id}`}>
-                {this.renderPoster(movie)}
-                <h3>{movie.title}</h3>
-                <p className="muted">{movie.release_year} · TMDB</p>
-                <button
-                  disabled={this.state.busy}
-                  onClick={(): void => this.importMovie(movie.tmdb_id)}
-                >
-                  {this.t('import')}
-                </button>
-              </article>
-            ))}
+            .map((movie) => this.renderRemoteCard(movie))}
         </div>
         <details>
           <summary>{this.t('addMovie')}</summary>
@@ -570,6 +1050,7 @@ export class Mainflix extends Component<Props, State> {
     return (
       <>
         {this.renderWelcome()}
+        {this.renderBrowseRow('popular')}
         <section className="party-panel" aria-label={this.t('party')}>
           <div className="party-heading">
             <span className="party-icon" aria-hidden="true">
@@ -646,6 +1127,7 @@ export class Mainflix extends Component<Props, State> {
           )}
         </section>
         {this.renderSearch()}
+        {this.renderDiscovery()}
       </>
     )
   }
@@ -984,13 +1466,19 @@ export class Mainflix extends Component<Props, State> {
             this.renderLogin()
           ) : (
             <>
-              {this.state.tab === 'week'
-                ? this.renderWeek()
-                : this.state.tab === 'catalogue'
-                  ? this.renderSearch()
-                  : this.state.tab === 'history'
-                    ? this.renderHistory()
-                    : this.renderAdmin()}
+              {this.state.tab === 'week' ? (
+                this.renderWeek()
+              ) : this.state.tab === 'catalogue' ? (
+                <>
+                  {this.renderBrowseRow('popular')}
+                  {this.renderSearch()}
+                  {this.renderDiscovery()}
+                </>
+              ) : this.state.tab === 'history' ? (
+                this.renderHistory()
+              ) : (
+                this.renderAdmin()
+              )}
               <details className="password-settings">
                 <summary>{this.t('changePassword')}</summary>
                 <form onSubmit={this.password.bind(this)}>

@@ -215,6 +215,34 @@ h3 {
   gap: 0.8rem;
   margin-top: 1.8rem;
 }
+.random-picker {
+  margin-bottom: 1.5rem;
+}
+.random-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.random-trigger img {
+  image-rendering: pixelated;
+}
+.random-picker fieldset {
+  min-width: 0;
+  border: 1px solid #454850;
+  border-radius: 9px;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+.random-result {
+  margin: 1rem 0;
+  max-width: 600px;
+}
+.random-result img,
+.random-result .poster-fallback {
+  width: 150px;
+  max-width: 100%;
+  border-radius: 9px;
+}
 .hero-actions button {
   padding: 0.9rem 1.2rem;
 }
@@ -369,6 +397,36 @@ progress::-moz-progress-bar {
 }
 .movie-grid:empty {
   display: none;
+}
+.browse-section {
+  min-width: 0;
+  margin: 2.5rem 0;
+}
+.movie-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(145px, 18vw, 185px);
+  gap: 1.1rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0.5rem 0 1rem;
+  margin: 1rem 0;
+  scrollbar-color: #799c59 #1d242b;
+}
+.movie-row:empty {
+  display: none;
+}
+.featured-section {
+  padding: 1.25rem;
+  border: 1px solid #799c5940;
+  border-radius: 14px;
+  background: #799c590a;
+}
+.featured-section h2 {
+  margin-top: 0;
+}
+.genre-picker {
+  max-width: 320px;
 }
 .movie-card {
   min-width: 0;
