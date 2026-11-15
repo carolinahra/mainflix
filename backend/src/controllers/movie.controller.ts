@@ -13,6 +13,7 @@ export class MovieController {
     this.router.get('/', this.search.bind(this))
     this.router.post('/', this.submit.bind(this))
     this.router.get('/browse', this.browse.bind(this))
+    this.router.get('/reviews', this.reviewed.bind(this))
     this.router.get('/:id', this.detail.bind(this))
     this.router.put('/:id/watched', this.watched.bind(this))
     this.router.put('/:id/review', this.review.bind(this))
@@ -57,6 +58,10 @@ export class MovieController {
     const id: number = Http.id.parse(req.params.id)
     res.json({ movie: await this.movies.find(id), ...(await this.reviews.list(id)) })
   }
+  private async reviewed(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const { limit, offset } = Http.pagination.parse(req.query)
+    res.json(await this.reviews.all(limit, offset))
+  }
   private async watched(req: HttpRequest, res: HttpResponse): Promise<void> {
     z.object({})
       .strict()
@@ -66,7 +71,10 @@ export class MovieController {
   }
   private async review(req: HttpRequest, res: HttpResponse): Promise<void> {
     const body = z
-      .object({ rating: z.number().int().min(1).max(5), text: z.string().max(10000).default('') })
+      .object({
+        rating: z.number().min(0.5).max(5).multipleOf(0.5),
+        text: z.string().max(10000).default(''),
+      })
       .strict()
       .parse(req.body)
     await this.reviews.save(Http.user(res).id, Http.id.parse(req.params.id), body.rating, body.text)

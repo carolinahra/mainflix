@@ -1,5 +1,6 @@
 import { after, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { MovieService } from '../src/services/movie.service.js'
 import { MovieRepository } from '../src/repositories/movie.repository.js'
 import { RoundRepository } from '../src/repositories/round.repository.js'
@@ -179,6 +180,63 @@ test('reviews require personal viewing and are unique/editable per author, with 
     (await pool.query('SELECT eligible FROM movies WHERE id=$1', [a.id])).rows[0].eligible,
     true,
   )
+})
+
+test('half-point migration preserves existing reviews and runs repeatedly', async () => {
+  const [user] = await TestDatabase.users()
+  const movie = await TestDatabase.movie()
+  await pool.query(`ALTER TABLE reviews DROP CONSTRAINT reviews_rating_check,
+    ALTER COLUMN rating TYPE integer,
+    ADD CONSTRAINT reviews_rating_check CHECK (rating BETWEEN 1 AND 5)`)
+  await pool.query('DELETE FROM schema_migrations WHERE version=4')
+  await pool.query('INSERT INTO user_watched_movies (user_id,movie_id) VALUES ($1,$2)', [
+    user!.id,
+    movie.id,
+  ])
+  await pool.query('INSERT INTO reviews (user_id,movie_id,rating,text) VALUES ($1,$2,3,$3)', [
+    user!.id,
+    movie.id,
+    'Keep this review',
+  ])
+  const sources = await Promise.all(
+    [
+      '001_initial.sql',
+      '002_usernames.sql',
+      '003_optional_email.sql',
+      '004_half_point_reviews.sql',
+    ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
+  )
+  await TestDatabase.database.migrate(sources)
+  await TestDatabase.database.migrate(sources)
+  const { rows } = await pool.query('SELECT rating,text FROM reviews WHERE movie_id=$1', [movie.id])
+  assert.deepEqual(rows, [{ rating: 3, text: 'Keep this review' }])
+  await pool.query('UPDATE reviews SET rating=3.5 WHERE movie_id=$1', [movie.id])
+})
+
+test('reviews persist half-point ratings and reject values outside the half-point scale', async () => {
+  const [user] = await TestDatabase.users()
+  const movie = await TestDatabase.movie()
+  const reviews = new ReviewService(
+    new ReviewRepository(TestDatabase.database),
+    new MovieRepository(TestDatabase.database),
+    new Clock(),
+  )
+  await reviews.markWatched(user!.id, movie.id)
+  for (const rating of [0.5, 3.5, 5]) {
+    await reviews.save(user!.id, movie.id, rating, 'Diamond review')
+    assert.equal((await reviews.list(movie.id)).reviews[0]!.rating, rating)
+  }
+  for (const rating of [0, 0.25, 3.7, 5.5, NaN, Infinity])
+    await assert.rejects(reviews.save(user!.id, movie.id, rating, ''), { code: 'INVALID_REVIEW' })
+  for (const rating of [0, 0.25, 5.5])
+    await assert.rejects(
+      pool.query('UPDATE reviews SET rating=$1 WHERE user_id=$2 AND movie_id=$3', [
+        rating,
+        user!.id,
+        movie.id,
+      ]),
+      { code: '23514' },
+    )
 })
 
 test('TMDB rejects malformed upstream metadata instead of persisting it', async () => {

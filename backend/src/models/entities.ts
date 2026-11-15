@@ -130,6 +130,10 @@ export interface MovieReviews {
   reviews: Review[]
   watched: Watched[]
 }
+export interface ReviewedMovie {
+  movie: Movie
+  reviews: Review[]
+}
 export type Serialized<T> = T extends Date
   ? string
   : T extends (infer U)[]

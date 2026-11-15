@@ -1,6 +1,6 @@
 import type { ReviewRepository } from '../repositories/review.repository.js'
 import type { MovieRepository } from '../repositories/movie.repository.js'
-import type { Movie, MovieReviews } from '../models/entities.js'
+import type { Movie, MovieReviews, ReviewedMovie } from '../models/entities.js'
 import type { Clock } from './clock.js'
 import {
   MovieNotFoundException,
@@ -19,7 +19,7 @@ export class ReviewService {
     await this.repository.markWatched(userId, movieId)
   }
   async save(userId: number, movieId: number, rating: number, text: string): Promise<void> {
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5 || text.length > 10000)
+    if (!Number.isInteger(rating * 2) || rating < 0.5 || rating > 5 || text.length > 10000)
       throw new InvalidReviewException()
     if (!(await this.repository.isWatched(userId, movieId))) throw new MovieNotWatchedException()
     await this.repository.save(userId, movieId, rating, text, this.clock.now())
@@ -27,5 +27,8 @@ export class ReviewService {
   async list(movieId: number): Promise<MovieReviews> {
     if (!(await this.movies.find(movieId))) throw new MovieNotFoundException()
     return this.repository.list(movieId)
+  }
+  async all(limit: number, offset: number): Promise<ReviewedMovie[]> {
+    return this.repository.all(limit, offset)
   }
 }

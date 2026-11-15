@@ -35,6 +35,47 @@ class HttpFixture {
   }
 }
 
+test('shared reviews require login and paginate movies without splitting their reviews', async () => {
+  const f = new HttpFixture()
+  const app = f.container.application.app
+  await request(app).get('/api/movies/reviews').expect(401)
+  const firstUser = await f.container.userService.create(null, 'reviewer', 'Reviewer', 'abcdef')
+  const secondUser = await f.container.userService.create(null, 'reader', 'Reader', 'abcdef')
+  const cookie = await f.login('reviewer', 'abcdef')
+  assert.deepEqual(
+    (await request(app).get('/api/movies/reviews').set('Cookie', cookie).expect(200)).body,
+    [],
+  )
+  const first = await TestDatabase.movie('First reviewed')
+  const latest = await TestDatabase.movie('Latest reviewed')
+  await TestDatabase.movie('No reviews')
+  for (const movie of [first, latest]) {
+    await f.container.reviewService.markWatched(firstUser.id, movie.id)
+    await f.container.reviewService.save(firstUser.id, movie.id, 3.5, '<b>A review</b>')
+  }
+  await f.container.reviewService.markWatched(secondUser.id, latest.id)
+  await f.container.reviewService.save(secondUser.id, latest.id, 5, 'Another review')
+  const page1 = await request(app)
+    .get('/api/movies/reviews?limit=1')
+    .set('Cookie', cookie)
+    .expect(200)
+  assert.equal(page1.body.length, 1)
+  assert.equal(page1.body[0].movie.id, latest.id)
+  assert.deepEqual(
+    page1.body[0].reviews.map((r: { name: string }) => r.name),
+    ['Reviewer', 'Reader'],
+  )
+  assert.equal(page1.body[0].reviews[0].rating, 3.5)
+  assert.equal(page1.body[0].reviews[0].text, '<b>A review</b>')
+  const page2 = await request(app)
+    .get('/api/movies/reviews?limit=1&offset=1')
+    .set('Cookie', cookie)
+    .expect(200)
+  assert.equal(page2.body[0].movie.id, first.id)
+  await request(app).get('/api/movies/reviews?limit=0').set('Cookie', cookie).expect(400)
+  await request(app).get('/api/movies/reviews?offset=-1').set('Cookie', cookie).expect(400)
+})
+
 test('accepting a TMDB pick nominates atomically and never restores rejected or excluded movies', async () => {
   const f = new HttpFixture()
   const friends = await TestDatabase.users()
@@ -247,10 +288,18 @@ test('only admins approve movies, reset links use configured origin, and review 
     .put(`/api/movies/${a.id}/review`)
     .set('Cookie', friendCookie)
     .set('Origin', 'http://localhost:5173')
-    .send({ rating: 5, text: 'Nice' })
+    .send({ rating: 4.5, text: 'Nice' })
     .expect(204)
   const detail = await request(app).get(`/api/movies/${a.id}`).set('Cookie', adminCookie)
   assert.equal(detail.body.reviews[0].user_id, friend.id)
+  assert.equal(detail.body.reviews[0].rating, 4.5)
+  for (const rating of [0, 0.25, 5.5])
+    await request(app)
+      .put(`/api/movies/${a.id}/review`)
+      .set('Cookie', friendCookie)
+      .set('Origin', 'http://localhost:5173')
+      .send({ rating, text: '' })
+      .expect(400)
 })
 
 test('four voting profiles and a separate non-voting admin see the same draw and can review', async () => {
