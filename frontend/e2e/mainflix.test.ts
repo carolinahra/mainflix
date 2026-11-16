@@ -33,6 +33,7 @@ class BrowserFixture {
           '002_usernames.sql',
           '003_optional_email.sql',
           '004_half_point_reviews.sql',
+          '005_profiles_favorites.sql',
         ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )
@@ -80,13 +81,280 @@ class BrowserFixture {
     await page.getByLabel('Username or email', { exact: true }).fill(email.split('@')[0]!)
     await page.getByLabel('Password', { exact: true }).fill('Browser test password!')
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor()
+    await page.locator('.profile-menu > summary').waitFor()
+  }
+  async profile(page: Page): Promise<void> {
+    await page.locator('.profile-menu > summary').click()
+    await page.getByRole('button', { name: 'Go to my profile', exact: true }).click()
   }
   async close(): Promise<void> {
     await this.browser?.close()
     await this.container.close()
   }
 }
+
+test(
+  'avatar menu fills its circle and header controls do not overlap at responsive sizes',
+  { timeout: 60_000 },
+  async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare()
+      const page = await f.page()
+      await f.login(page, 'admin')
+      const summary = page.locator('.profile-menu > summary')
+      assert.equal(await summary.locator('img').getAttribute('src'), '/art/creeper-avatar.png')
+      for (const language of ['en', 'es']) {
+        await page.getByLabel('Language / Idioma').selectOption(language)
+        for (const width of [320, 375, 760, 800, 1024, 1100, 1280, 1440]) {
+          await page.setViewportSize({ width, height: 900 })
+          const overlaps = await page.locator('header').evaluate((header) => {
+            const controls = [
+              ...header.querySelectorAll('.brand, nav button, select, .profile-menu > summary'),
+            ].map((element) => element.getBoundingClientRect())
+            return controls.some((a, index) =>
+              controls
+                .slice(index + 1)
+                .some(
+                  (b) =>
+                    Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 &&
+                    Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5,
+                ),
+            )
+          })
+          assert.equal(overlaps, false, `${language} header controls overlap at ${width}px`)
+          assert.equal(
+            await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+            false,
+          )
+        }
+      }
+      await page.getByLabel('Language / Idioma').selectOption('en')
+      await summary.click()
+      await page.getByRole('button', { name: 'Go to my profile', exact: true }).waitFor()
+      assert.equal(await page.locator('.profile-page').count(), 0)
+      await page.getByRole('button', { name: 'Go to my profile', exact: true }).click()
+      await page.getByRole('heading', { name: 'My profile', exact: true }).waitFor()
+      assert.equal(await page.locator('.profile-menu[open]').count(), 0)
+      assert.equal(
+        await page.getByRole('img', { name: 'Profile photo', exact: true }).getAttribute('src'),
+        '/art/creeper-avatar.png',
+      )
+      await summary.focus()
+      await summary.press('Enter')
+      await page.getByRole('button', { name: 'Go to my profile', exact: true }).waitFor()
+      await summary.press('Escape')
+      assert.equal(await page.locator('.profile-menu[open]').count(), 0)
+      const fillsCircle = await summary.evaluate((element) => {
+        const circle = element.getBoundingClientRect()
+        const image = element.querySelector('img')!.getBoundingClientRect()
+        return (
+          getComputedStyle(element).borderRadius === '50%' &&
+          image.width >= circle.width - 4 &&
+          image.height >= circle.height - 4
+        )
+      })
+      assert.equal(fillsCircle, true)
+      await summary.click()
+      await page.screenshot({
+        path: '/tmp/mainflix-avatar-menu-desktop.png',
+        clip: { x: 0, y: 0, width: 1440, height: 220 },
+      })
+      await page.setViewportSize({ width: 320, height: 568 })
+      await page.screenshot({
+        path: '/tmp/mainflix-avatar-menu-mobile.png',
+        clip: { x: 0, y: 0, width: 320, height: 220 },
+      })
+    } finally {
+      await f.close()
+    }
+  },
+)
+
+test(
+  'past weekly movies stay on home until the last voter reviews them',
+  { timeout: 60_000 },
+  async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare()
+      const users = await f.database.client.selectFrom('users').selectAll().orderBy('id').execute()
+      const admin = users.find((user) => user.is_admin)!
+      const voters = users.filter((user) => !user.is_admin)
+      const movie = await f.database.client
+        .selectFrom('movies')
+        .selectAll()
+        .where('title', '=', 'Smoke Film A')
+        .executeTakeFirstOrThrow()
+      const previousWeek = f.container.clock.weekKey(new Date(Date.now() - 7 * 86400000))
+      await f.database.client
+        .insertInto('rounds')
+        .values({
+          week_start: previousWeek,
+          winner_id: movie.id,
+          drawn_by: admin.id,
+          drawn_at: new Date(),
+        })
+        .execute()
+      await f.database.client
+        .updateTable('movies')
+        .set({ eligible: false })
+        .where('id', '=', movie.id)
+        .execute()
+      for (const user of [admin, ...voters.slice(0, 3)]) {
+        await f.container.reviewService.markWatched(user.id, movie.id)
+        await f.container.reviewService.save(user.id, movie.id, 3.5, 'Already rated')
+      }
+      const page = await f.page()
+      await f.login(page, 'friend1')
+      const section = page.locator('[aria-labelledby="to-review-title"]')
+      await section.getByRole('heading', { name: 'To be reviewed', exact: true }).waitFor()
+      await section.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
+      assert.equal(await page.locator('.winner').count(), 0)
+      await page.reload()
+      await section.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
+      await section.screenshot({ path: '/tmp/mainflix-to-review-desktop.png' })
+      await page.setViewportSize({ width: 320, height: 568 })
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await section.screenshot({ path: '/tmp/mainflix-to-review-mobile.png' })
+      const last = await f.page()
+      await f.login(last, 'friend4')
+      await last
+        .locator('[aria-labelledby="to-review-title"]')
+        .getByRole('button', { name: 'Rate movie', exact: true })
+        .click()
+      const dialog = last.getByRole('dialog')
+      await dialog.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await dialog.getByRole('radio', { name: '4.5/5', exact: true }).check()
+      await dialog.getByRole('button', { name: 'Save review', exact: true }).click()
+      await dialog.locator('.review [aria-label="4.5/5"]').waitFor()
+      await dialog.getByRole('button', { name: 'Close ×', exact: true }).click()
+      await last
+        .getByRole('heading', { name: 'To be reviewed', exact: true })
+        .waitFor({ state: 'hidden' })
+      await section.waitFor({ state: 'hidden', timeout: 10_000 })
+    } finally {
+      await f.close()
+    }
+  },
+)
+
+test(
+  'profile edits, photo uploads, private reviews, favorites, and password changes persist',
+  { timeout: 90_000 },
+  async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare()
+      const second = await f.database.client
+        .selectFrom('users')
+        .select('id')
+        .where('username', '=', 'friend2')
+        .executeTakeFirstOrThrow()
+      const movie = await f.database.client
+        .selectFrom('movies')
+        .select('id')
+        .where('title', '=', 'Smoke Film A')
+        .executeTakeFirstOrThrow()
+      await f.container.reviewService.markWatched(second.id, movie.id)
+      await f.container.reviewService.save(second.id, movie.id, 2, 'Someone else review')
+      const page = await f.page()
+      await f.login(page, 'friend1')
+      await f.profile(page)
+      await page.getByLabel('Display name', { exact: true }).fill('Luna')
+      await page.getByLabel('Username', { exact: true }).fill('luna')
+      await page.getByRole('button', { name: 'Save profile', exact: true }).click()
+      await page.getByRole('status').filter({ hasText: 'Profile saved.' }).waitFor()
+      await page.getByLabel('Profile photo', { exact: true }).setInputFiles({
+        name: 'diamond.png',
+        mimeType: 'image/png',
+        buffer: await readFile(new URL('../public/art/diamond.png', import.meta.url)),
+      })
+      await page.locator('.profile-photo > img[src^="data:image/webp"]').waitFor()
+      const avatar = await page.locator('.profile-photo > img').getAttribute('src')
+      assert.ok(avatar?.startsWith('data:image/webp;base64,'))
+      assert.equal(await page.locator('.profile-menu summary img').getAttribute('src'), avatar)
+      await page.reload()
+      await f.profile(page)
+      assert.equal(await page.getByLabel('Username', { exact: true }).inputValue(), 'luna')
+      assert.equal(await page.locator('.profile-photo > img').getAttribute('src'), avatar)
+      await page.getByRole('button', { name: 'This week', exact: true }).click()
+      await page
+        .locator('#movie-catalogue')
+        .getByRole('button', { name: 'Smoke Film A', exact: true })
+        .click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('button', { name: 'Add to favorites', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Remove from favorites', exact: true }).waitFor()
+      await dialog.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await dialog.getByRole('radio', { name: '3.5/5', exact: true }).check()
+      await dialog.getByLabel('Your review (optional)', { exact: true }).fill('My profile review')
+      await dialog.getByRole('button', { name: 'Save review', exact: true }).click()
+      await dialog.locator('.review').getByText('My profile review', { exact: true }).waitFor()
+      await dialog.getByRole('button', { name: 'Close ×', exact: true }).click()
+      await f.profile(page)
+      await page
+        .locator('[aria-labelledby="profile-reviews"]')
+        .getByText('My profile review', { exact: true })
+        .waitFor()
+      assert.equal(
+        await page
+          .locator('[aria-labelledby="profile-reviews"]')
+          .getByText('Someone else review', { exact: true })
+          .count(),
+        0,
+      )
+      await page.locator('[aria-labelledby="profile-favorites"] .movie-card').waitFor()
+      await page.locator('.profile-details form button:enabled').waitFor()
+      await page.evaluate(() => window.scrollTo(0, 0))
+      await page.screenshot({ path: '/tmp/mainflix-profile-desktop.png', fullPage: true })
+      await page.setViewportSize({ width: 320, height: 568 })
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await page.screenshot({ path: '/tmp/mainflix-profile-mobile.png', fullPage: true })
+      await page.getByRole('button', { name: 'Remove from favorites', exact: true }).click()
+      await page.getByText('You have no favorite movies yet.', { exact: true }).waitFor()
+      await page.getByRole('button', { name: 'Remove photo', exact: true }).click()
+      await page.locator('.profile-photo > img[src="/art/creeper-avatar.png"]').waitFor()
+      await page.getByLabel('Current password', { exact: true }).fill('Browser test password!')
+      await page
+        .getByLabel('New password (6–128 characters)', { exact: true })
+        .fill('Changed test password!')
+      await page
+        .locator('.password-settings')
+        .getByRole('button', { name: 'Save', exact: true })
+        .click()
+      await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor()
+      await page.getByLabel('Username or email', { exact: true }).fill('luna')
+      await page.getByLabel('Password', { exact: true }).fill('Changed test password!')
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+      await f.profile(page)
+      await page.getByText('You have no favorite movies yet.', { exact: true }).waitFor()
+      assert.equal(
+        await page.locator('.profile-photo > img').getAttribute('src'),
+        '/art/creeper-avatar.png',
+      )
+      const account = await f.database.client
+        .selectFrom('users')
+        .select('id')
+        .where('username', '=', 'luna')
+        .executeTakeFirstOrThrow()
+      await f.container.userService.update(account.id, { name: 'Friend1', username: 'friend1' })
+      await f.container.userService.changePassword(
+        account.id,
+        'Changed test password!',
+        'Browser test password!',
+      )
+    } finally {
+      await f.close()
+    }
+  },
+)
 
 test(
   'random nominations keep filters, reroll, cancel without saving, and accept the displayed TMDB film',
@@ -294,6 +562,7 @@ test(
           false,
         )
       }
+      await page.locator('.profile-menu > summary').click()
       await page.getByRole('button', { name: 'Salir', exact: true }).click()
       await page.getByRole('button', { name: 'Entrar', exact: true }).waitFor()
       assert.equal(await page.getByText('La bola negra', { exact: true }).count(), 0)
@@ -330,6 +599,7 @@ test(
         .locator('#movie-catalogue')
         .getByRole('button', { name: 'Smoke Film A', exact: true })
         .waitFor()
+      await admin.locator('.profile-menu > summary').click()
       await admin.getByRole('button', { name: 'Sign out', exact: true }).click()
       await f.login(admin, 'admin@example.com')
       for (let i = 0; i < 4; i++) await f.login(pages[i]!, `friend${i + 1}@example.com`)
