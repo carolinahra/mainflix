@@ -183,5 +183,8 @@
   "createAccount": "Crear cuenta",
   "alreadyHaveAccount": "Ya tengo una cuenta",
   "votingNextWeek": "Podrás votar a partir de la próxima semana.",
-  "INVALID_INVITATION": "Esta invitación no es válida, ha caducado o ya se ha usado. Pide un enlace nuevo."
+  "INVALID_INVITATION": "Esta invitación no es válida, ha caducado o ya se ha usado. Pide un enlace nuevo.",
+  "createNewGroup": "Crear nuevo grupo",
+  "groupsDescription": "Un espacio para cada noche de cine. Elige tu gente o crea un grupo.",
+  "groupNameExample": "🍿 Familia"
 }

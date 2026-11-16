@@ -26,6 +26,7 @@ interface Props {
   container: Container
 }
 interface State {
+  creatingGroup: boolean
   groups: Group[]
   group: Group | null
   inviteToken: string | null
@@ -75,6 +76,7 @@ export class Mainflix extends Component<Props, State> {
   private searchController: AbortController | undefined
   private readonly browseControllers = new Map<MovieCategory, AbortController>()
   override state: State = {
+    creatingGroup: false,
     groups: [],
     group: null,
     inviteToken: location.hash.startsWith('#invite=') ? location.hash.slice(8) : null,
@@ -217,7 +219,9 @@ export class Mainflix extends Component<Props, State> {
   private renderGroups(): ReactNode {
     return (
       <section className="groups-page">
+        <p className="eyebrow">MAINFLIX</p>
         <h1>{this.t('chooseGroup')}</h1>
+        <p className="groups-description">{this.t('groupsDescription')}</p>
         {!this.state.groups.length && <p>{this.t('firstGroup')}</p>}
         <div className="group-grid">
           {this.state.groups.map((group) => (
@@ -229,20 +233,47 @@ export class Mainflix extends Component<Props, State> {
                 void this.perform(() => this.selectGroup(group))
               }}
             >
-              {group.name}
+              <span className="group-card-icon" aria-hidden="true">
+                ▦
+              </span>
+              <span>{group.name}</span>
             </button>
           ))}
-        </div>
-        <form onSubmit={this.createGroup.bind(this)}>
-          <label>
-            {this.t('groupName')}
-            <input name="name" required maxLength={80} />
-          </label>
-          <button className="primary" disabled={this.state.busy}>
-            {this.t('createGroup')}
+          <button
+            className="create-group-circle"
+            type="button"
+            title={this.t('createNewGroup')}
+            aria-label={this.t('createNewGroup')}
+            aria-expanded={this.state.creatingGroup}
+            aria-controls="create-group-form"
+            disabled={this.state.busy}
+            onClick={() => this.setState({ creatingGroup: true })}
+          >
+            <span aria-hidden="true">+</span>
           </button>
-        </form>
-        <button disabled={this.state.busy} onClick={() => this.invite()}>
+        </div>
+        {this.state.creatingGroup && (
+          <form id="create-group-form" onSubmit={this.createGroup.bind(this)}>
+            <label>
+              {this.t('groupName')}
+              <input
+                name="name"
+                required
+                maxLength={80}
+                placeholder={this.t('groupNameExample')}
+                autoFocus
+              />
+            </label>
+            <button className="primary" disabled={this.state.busy}>
+              {this.t('createGroup')}
+            </button>
+          </form>
+        )}
+        <button
+          className="group-invite-button"
+          disabled={this.state.busy}
+          onClick={() => this.invite()}
+        >
           {this.t('inviteToApp')}
         </button>
         {this.renderInvitationLink()}
@@ -373,7 +404,7 @@ export class Mainflix extends Component<Props, State> {
     this.setState({
       user: null,
       error: null,
-
+      creatingGroup: false,
       groups: [],
       group: null,
       invitationLink: null,

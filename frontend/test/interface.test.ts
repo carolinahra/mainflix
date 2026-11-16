@@ -361,7 +361,7 @@ test('signed-in accounts choose named groups and can invite someone without join
   const markup = renderToStaticMarkup(app.render())
   assert.match(markup, /Choose your group/)
   assert.match(markup, />Family</)
-  assert.match(markup, /Group name/)
+  assert.match(markup, /Create new group/)
   assert.match(markup, /Invite to Mainflix/)
   assert.doesNotMatch(markup, />Skip this week</)
 })
@@ -429,4 +429,24 @@ test('personal favorites from another group do not offer nomination in the curre
   const markup = renderToStaticMarkup(app.render())
   assert.match(markup, /Go to my profile/)
   assert.match(markup, /My profile/)
+})
+
+test('group creation starts with a labeled plus circle and reveals the form only after clicking', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    user: { id: 1, name: 'Owner', username: 'owner', email: null, is_admin: false, avatar: null },
+    groups: [{ id: 1, name: 'maincra', is_owner: true, can_vote: true }],
+  }
+  let markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /class="create-group-circle"/)
+  assert.match(markup, /title="Create new group"/)
+  assert.doesNotMatch(markup, /name="name"/)
+  app.state = { ...app.state, creatingGroup: true }
+  markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /id="create-group-form"/)
+  assert.match(markup, /Group name/)
+  assert.match(markup, />Create group</)
 })

@@ -183,5 +183,8 @@
   "createAccount": "Create account",
   "alreadyHaveAccount": "I already have an account",
   "votingNextWeek": "You can vote starting next week.",
-  "INVALID_INVITATION": "This invitation is invalid, expired or already used. Ask for a new link."
+  "INVALID_INVITATION": "This invitation is invalid, expired or already used. Ask for a new link.",
+  "createNewGroup": "Create new group",
+  "groupsDescription": "A space for every movie night. Pick your people or start a new group.",
+  "groupNameExample": "🍿 Family"
 }

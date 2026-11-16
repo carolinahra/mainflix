@@ -1571,21 +1571,68 @@ footer a {
 .groups-page {
   max-width: 760px;
   margin: 2rem auto;
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+  border: 1px solid #a4ee5726;
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at top right, #a4ee5712, transparent 65%),
+    linear-gradient(145deg, #1c211c, #151719);
+  box-shadow: 0 20px 70px #0003;
 }
 .group-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 180px));
   gap: 1rem;
   margin: 1.5rem 0;
 }
 .group-card {
-  min-height: 120px;
-  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 64px;
+  padding: 0.8rem 1rem;
+  border-color: #a4ee5745;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #2a4021, #1e2d1b);
+  color: #ddf7c5;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: start;
   overflow-wrap: anywhere;
+}
+.group-card:hover:not(:disabled) {
+  background: #304b25;
+  border-color: var(--green);
+  box-shadow: 0 4px 18px #a4ee5715;
+}
+.group-card-icon {
+  color: var(--green);
+  font-size: 1.5rem;
+}
+.groups-page h1 {
+  margin: 0.4rem 0 0.75rem;
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+}
+.groups-description {
+  color: var(--muted);
+  max-width: 48ch;
+  line-height: 1.6;
+}
+.group-invite-button {
+  border-color: #a4ee5738;
+  color: #c5eba5;
+  background: #a4ee570a;
+}
+.group-invite-button:hover:not(:disabled) {
+  background: #a4ee571a;
 }
 .groups-page form {
   max-width: 420px;
   margin: 1.5rem 0;
+  padding: 1.25rem;
+  border-radius: 16px;
+  border: 1px solid #a4ee5726;
+  background: #10151080;
 }
 .group-toolbar {
   display: flex;
@@ -1627,4 +1674,25 @@ footer a {
   .groups-page {
     margin: 1rem 0;
   }
+}
+
+.create-group-circle {
+  background: var(--green);
+  color: #15210c;
+  border-color: var(--green);
+  box-shadow: 0 4px 20px #a4ee5726;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 2rem;
+  line-height: 1;
+  align-self: center;
+  justify-self: start;
+}
+
+.create-group-circle:hover:not(:disabled) {
+  background: #bafb7b;
+  box-shadow: 0 4px 24px #a4ee5745;
 }
