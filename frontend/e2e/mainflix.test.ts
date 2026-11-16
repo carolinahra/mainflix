@@ -964,6 +964,13 @@ test(
     try {
       await f.prepare()
       const owner = await f.page()
+      await owner.getByLabel('Username or email', { exact: true }).fill('friend1')
+      await owner.getByLabel('Password', { exact: true }).fill('Wrong password!')
+      await owner.getByRole('button', { name: 'Sign in', exact: true }).click()
+      const toast = owner.locator('.error-toast')
+      await toast.waitFor()
+      assert.equal(await toast.evaluate((element) => getComputedStyle(element).position), 'fixed')
+      await toast.waitFor({ state: 'hidden', timeout: 6500 })
       await f.login(owner, 'friend1')
       await owner
         .locator('.group-toolbar')

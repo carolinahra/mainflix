@@ -431,6 +431,34 @@ test('personal favorites from another group do not offer nomination in the curre
   assert.match(markup, /My profile/)
 })
 
+test('exception toasts expire after five seconds and a new exception restarts the timer', async (context) => {
+  const { ApiException } = await import('../src/api.js')
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = { ...app.state, loading: false }
+  context.mock.method(app, 'setState', (update: object) => {
+    app.state = { ...app.state, ...update }
+  })
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  await app['perform'](async () => {
+    throw new ApiException('INVALID_CREDENTIALS', 401)
+  })
+  let markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /class="notice error error-toast"[^>]*role="alert"/)
+  assert.equal((markup.match(/role="alert"/g) ?? []).length, 1)
+  context.mock.timers.tick(4999)
+  assert.equal(app.state.error, 'INVALID_CREDENTIALS')
+  await app['perform'](async () => {
+    throw new ApiException('VALIDATION_ERROR', 400)
+  })
+  context.mock.timers.tick(1)
+  assert.equal(app.state.error, 'VALIDATION_ERROR')
+  context.mock.timers.tick(4999)
+  assert.equal(app.state.error, null)
+  markup = renderToStaticMarkup(app.render())
+  assert.doesNotMatch(markup, /role="alert"/)
+})
+
 test('group creation starts with a labeled plus circle and reveals the form only after clicking', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })

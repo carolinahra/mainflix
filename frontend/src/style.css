@@ -1676,6 +1676,16 @@ footer a {
   }
 }
 
+.error-toast {
+  position: fixed;
+  bottom: 1rem;
+  inset-inline-end: 1rem;
+  z-index: 20;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 2rem));
+  margin: 0;
+  box-shadow: 0 8px 30px #0006;
+}
 .create-group-circle {
   background: var(--green);
   color: #15210c;

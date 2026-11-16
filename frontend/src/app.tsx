@@ -71,6 +71,7 @@ export class Mainflix extends Component<Props, State> {
   private readonly roulette = createRef<HTMLDivElement>()
   private poll: ReturnType<typeof setInterval> | undefined
   private debounce: ReturnType<typeof setTimeout> | undefined
+  private errorTimer: ReturnType<typeof setTimeout> | undefined
   private spinTimer: ReturnType<typeof setTimeout> | undefined
   private randomController: AbortController | undefined
   private searchController: AbortController | undefined
@@ -356,6 +357,18 @@ export class Mainflix extends Component<Props, State> {
       </section>
     )
   }
+  private showError(code: string): void {
+    clearTimeout(this.errorTimer)
+    this.setState({ error: code })
+    this.errorTimer = setTimeout(() => this.setState({ error: null }), 5000)
+  }
+  private renderErrorToast(): ReactNode {
+    return this.state.error ? (
+      <p className="notice error error-toast" role="alert" aria-atomic="true">
+        {this.props.container.i18n.error(this.state.error)}
+      </p>
+    ) : null
+  }
   private t(key: TranslationKey): string {
     return this.props.container.i18n.t(key)
   }
@@ -384,7 +397,7 @@ export class Mainflix extends Component<Props, State> {
     clearInterval(this.poll)
     clearTimeout(this.debounce)
     clearTimeout(this.spinTimer)
-
+    clearTimeout(this.errorTimer)
     this.randomController?.abort()
     this.searchController?.abort()
     this.browseControllers.forEach((controller) => controller.abort())
@@ -398,7 +411,7 @@ export class Mainflix extends Component<Props, State> {
     this.browseControllers.clear()
     clearTimeout(this.debounce)
     clearTimeout(this.spinTimer)
-
+    clearTimeout(this.errorTimer)
     this.dialog.current?.close()
     this.randomDialog.current?.close()
     this.setState({
@@ -451,7 +464,7 @@ export class Mainflix extends Component<Props, State> {
         error instanceof ApiException &&
         (error.status === 401 || error.code === 'STALE_REQUEST')
       ))
-        this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
+        this.showError(error instanceof ApiException ? error.code : 'genericError')
     } finally {
       this.setState({ loading: false })
     }
@@ -468,7 +481,7 @@ export class Mainflix extends Component<Props, State> {
         error.code === 'AUTHENTICATION_REQUIRED'
       )
         this.clearSession()
-      this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
+      this.showError(error instanceof ApiException ? error.code : 'genericError')
       if (error instanceof ApiException && error.code.startsWith('ROUND_'))
         await this.refreshRound()
     } finally {
@@ -495,7 +508,7 @@ export class Mainflix extends Component<Props, State> {
     } catch (error: unknown) {
       if (error instanceof ApiException && error.code === 'STALE_REQUEST') return
       if (error instanceof ApiException && error.status === 401) this.clearSession()
-      else this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
+      else this.showError(error instanceof ApiException ? error.code : 'genericError')
     }
   }
   private login(event: FormEvent<HTMLFormElement>): void {
@@ -733,7 +746,7 @@ export class Mainflix extends Component<Props, State> {
       }))
     } catch (error: unknown) {
       if (!controller.signal.aborted)
-        this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
+        this.showError(error instanceof ApiException ? error.code : 'genericError')
     }
   }
   private loadDiscovery(): void {
@@ -829,7 +842,7 @@ export class Mainflix extends Component<Props, State> {
     this.randomController = controller
     const { randomCategory, randomFrom, randomTo, randomMovie, language } = this.state
     if (randomFrom && randomTo && Number(randomFrom) > Number(randomTo)) {
-      this.setState({ randomError: 'VALIDATION_ERROR' })
+      this.showError('VALIDATION_ERROR')
       return
     }
     this.setState({ randomLoading: true, randomError: null })
@@ -874,7 +887,7 @@ export class Mainflix extends Component<Props, State> {
         this.setState({ randomMovie: candidates[Math.floor(Math.random() * candidates.length)]! })
     } catch (error: unknown) {
       if (!controller.signal.aborted)
-        this.setState({ randomError: error instanceof ApiException ? error.code : 'genericError' })
+        this.showError(error instanceof ApiException ? error.code : 'genericError')
     } finally {
       if (!controller.signal.aborted) this.setState({ randomLoading: false })
     }
@@ -954,11 +967,7 @@ export class Mainflix extends Component<Props, State> {
               {this.t('close')} ×
             </button>
             <h2 id="random-title">{this.t('randomMovie')}</h2>
-            {this.state.error && (
-              <p className="notice error" role="alert">
-                {this.props.container.i18n.error(this.state.error)}
-              </p>
-            )}
+            {this.renderErrorToast()}
             <form
               onSubmit={(event) => {
                 void this.pickRandom(event)
@@ -2203,11 +2212,7 @@ export class Mainflix extends Component<Props, State> {
               : undefined
           }
         >
-          {this.state.error && (
-            <p className="notice error" role="alert">
-              {this.props.container.i18n.error(this.state.error)}
-            </p>
-          )}
+          {!this.state.detail && !this.state.randomOpen && this.renderErrorToast()}
           {this.state.message && (
             <p className="notice" role="status">
               {this.t(this.state.message)}
@@ -2273,11 +2278,7 @@ export class Mainflix extends Component<Props, State> {
           <small>{this.t('tmdbCredit')}</small>
         </footer>
         <dialog ref={this.dialog} onCancel={this.closeDetail.bind(this)}>
-          {this.state.error && (
-            <p className="notice error" role="alert">
-              {this.props.container.i18n.error(this.state.error)}
-            </p>
-          )}
+          {this.state.detail && this.renderErrorToast()}
           {this.renderDetail()}
         </dialog>
       </>
