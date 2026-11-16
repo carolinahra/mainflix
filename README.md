@@ -1,12 +1,24 @@
 # Mainflix
 
-Private weekly movie draws for four friends. Two independent TypeScript applications in one npm workspace:
+Private weekly movie draws for named groups of family and friends. Two independent TypeScript applications in one npm workspace:
 
 - `backend/`: Express MVC API, class-based services, Kysely repositories, PostgreSQL.
 - `frontend/`: React + Vite, class-based components/services, English and Spanish JSON dictionaries, Minecraft/Netflix styling.
 - `db/`: versioned PostgreSQL schema.
 
-No public signup, Redis, email delivery, or Google login. No production accounts or deployments are created by this repository.
+Signup requires a private invitation link. No Redis, email delivery, or Google login. No production accounts or deployments are created by this repository.
+
+## Groups and invitations
+
+After signing in, choose a group or use the circular **+** button to reveal the new-group form. Hovering the button shows **Create new group**. Names can include emoji, such as **🍿 Family** or **👨‍👩‍👧‍👦 Friends**. Use **Switch group** to return to the chooser. Each group has its own catalogue, eligibility, nominations, weekly draws, history, watched records and reviews. Profiles and private favorites belong to the account; My profile shows personal reviews and favorites across groups. Opening a saved movie from another group selects that movie's group.
+
+**Invite to Mainflix** creates a link for an account without access to the inviter's groups. The recipient can create and name their own first group. **Invite to this group** is available to the group's owner and joins the recipient to that named group. New recipients register with a unique username and password; existing accounts can sign in and accept the invitation. Both links work once, expire after seven days, and are stored hashed. Share them privately using the copyable link; there is no email delivery.
+
+Membership is flexible. If a person joins before the first response, they can vote that week. If voting has started, they can view the group immediately and vote from the next Madrid week. The response count determines readiness from that week's eligible members, with no fixed four-person requirement. The group owner manages its movies and invitations; ownership never grants access to another person's account password reset.
+
+Apply `006_groups.sql` using the existing `npm run db:migrate` before running the updated applications. It preserves account IDs, passwords, sessions, favorites, movie IDs, reviews, nominations and saved winners, and places existing activity in an initial **Mainflix** group owned by the existing app administrator. Back up the existing database before applying the migration. No hosted database is migrated automatically.
+
+Exceptions appear as accessible toast notifications and disappear after five seconds. A new exception restarts that timer; errors raised inside a movie dialog stay visible above the dialog.
 
 ## Local setup
 
@@ -26,7 +38,7 @@ npm run user:create -- --username friend4 --name Friend4
 
 Usernames are required, unique, case-insensitive, and contain 3–32 letters, numbers, or underscores. Email is optional: add `--email you@example.com` when creating an account to enable email login as well. Supplied emails are validated and unique. Sign in with your username or email and password. Migrations preserve existing accounts, passwords, and sessions.
 
-The provisioning command prompts for a hidden password (6–128 characters). For noninteractive provisioning, set `MAINFLIX_PASSWORD` in the process environment; do not put passwords in command arguments, commits, or shared logs. Up to four voting profiles plus one separate admin account are allowed. The admin cannot nominate or skip and does not count toward voting readiness.
+The provisioning command prompts for a hidden password (6–128 characters). For noninteractive provisioning, set `MAINFLIX_PASSWORD` in the process environment; do not put passwords in command arguments, commits, or shared logs. CLI-provisioned users join the initial Mainflix group. There is no fixed voting-member limit. The original app administrator remains a non-voting observer in that group and retains account recovery access. Group creators own their new groups and also participate in voting.
 
 Start the applications in separate terminals:
 
@@ -67,22 +79,22 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 ## Rules
 
 - Weeks run Monday 00:00 through the next Monday 00:00 in **Europe/Madrid**, including daylight-saving changes.
-- Each non-admin profile nominates one approved, eligible movie or explicitly skips. Responses can change until all four voting profiles have responded, then lock. Existing admin responses are ignored.
-- Four skips close the round without a winner. Incomplete/undrawn rounds expire at Monday midnight. There is no automatic draw.
+- Each eligible group member nominates one approved, eligible movie or explicitly skips. Responses can change until every eligible member has responded, then lock. Group owners also vote; the original administrator remains an observer in the migrated group.
+- Everyone skipping closes the round without a winner. Incomplete/undrawn rounds expire at Monday midnight. There is no automatic draw.
 - Every nomination is one entry. Repeated nominations weight that movie proportionally.
 - Any member can draw. Short database transactions serialize group operations: concurrent clicks return the same saved winner. The roulette only presents that result.
-- Winning excludes the movie from later draws immediately. Personal watched progress is independent. Only the admin can restore eligibility; saved winners never change.
+- Winning excludes the movie from later draws immediately. Personal watched progress is independent. Only the group owner can restore eligibility; saved winners never change.
 - Losing nominations do not carry over, but their movies stay in the catalogue.
-- TMDB imports and manual additions are immediately eligible for nomination. Manual additions are the fallback for films missing from TMDB. Existing rejected/excluded films stay blocked; admins can still manage metadata and eligibility or resolve older pending entries.
+- TMDB imports and manual additions are immediately eligible for nomination. Manual additions are the fallback for films missing from TMDB. Existing rejected/excluded films stay blocked; group owners can still manage metadata and eligibility or resolve older pending entries.
 - Each user can mark any approved catalogue movie personally watched, including movies seen before Mainflix; doing so does not remove eligibility. One editable review per user/movie, 0.5–5 diamonds in half-point steps and optional text. Viewing progress is required to review, and survives reselection. The Reviews tab groups everyone’s diamond ratings and text by movie, with recently reviewed movies first.
-- The home page’s **To be reviewed** section keeps past weekly selections visible until every voting member has rated them. Admin ratings do not count toward completion; the current weekly movie keeps its existing card.
+- The home page’s **To be reviewed** section keeps past weekly selections visible until every voting member in that group has rated them. Observer ratings do not count toward completion; the current weekly movie keeps its existing card.
 - Old rounds/reviews persist. No cron task is needed: the API determines the current round from server time on each request; the frontend refreshes every five seconds while visible.
 
 ## Personal profiles and favorites
 
 The circular avatar menu opens **My profile**, which contains display name, unique login username, profile photo, personal reviews, private favorite movies, and password change. Renaming an account preserves its sessions, nominations and reviews; use the new username on the next login. Changing the password still signs out all sessions.
 
-Photos accept PNG/JPEG/WebP up to 5 MB in the browser, are center-cropped to a 128×128 WebP thumbnail, and stored in PostgreSQL (maximum 16 KiB encoded image data). Removing a photo restores the default creeper picture. No file-storage service is needed for the five-person group.
+Photos accept PNG/JPEG/WebP up to 5 MB in the browser, are center-cropped to a 128×128 WebP thumbnail, and stored in PostgreSQL (maximum 16 KiB encoded image data). Removing a photo restores the default creeper picture. No file-storage service is needed for these small thumbnails.
 
 Favorite movies can be added from local/TMDB cards or movie details and removed from details or My profile. A TMDB favorite imports metadata, but never nominates the film, marks it watched, or restores rejected/excluded eligibility. Favorites and personal reviews are scoped to the authenticated account.
 
@@ -102,11 +114,18 @@ Run this locally with the target database credentials. It prints a private reset
 
 ## API
 
-All routes except health, login, reset, and logout require a session cookie. `/api/admin/*` also requires an admin account. User identity comes only from the session.
+All routes except health, login, reset, logout, invitation preview and invitation registration require a session cookie. Movie and round requests carry `X-Mainflix-Group: <id>`; membership is verified on every request. Omitting the header supports the initial group only when the account belongs to it. `/api/admin/movies/*` requires group ownership; `/api/admin/users*` additionally requires the original app administrator. User identity comes only from the session. Account profile endpoints do not require a group.
 
 | Method | Path | Body / result |
 |---|---|---|
 | GET | `/api/health` | Process health (does not check the DB) |
+| GET / POST | `/api/groups` | List your groups / create `{name}` |
+| POST | `/api/invitations` | `{}` for an app invitation, or `{groupId}` for an owner-issued group invitation → private URL + expiry |
+| GET | `/api/invitations/:token` | Public preview: group name (or null) + expiry |
+| POST | `/api/invitations/:token/accept` | Signed-in account accepts the link |
+| POST | `/api/auth/register` | `{token,username,password,name?}` → new account + session cookie |
+| GET | `/api/auth/favorites` | Your private favorites across groups; supports limit/offset |
+| GET | `/api/auth/reviews` | Your own reviews across groups; supports limit/offset |
 | POST | `/api/auth/login` | `{identifier,password}` (username or email; legacy `{email,password}` also accepted) → user + cookie |
 | PATCH | `/api/auth/me` | Any nonempty subset of `{name,username,avatar}`; avatar is a bounded WebP data URL or `null` |
 | GET | `/api/auth/me` | Current user |
@@ -131,7 +150,7 @@ All routes except health, login, reset, and logout require a session cookie. `/a
 | GET | `/api/admin/movies/pending` | Pending movies; supports limit/offset |
 | PATCH | `/api/admin/movies/:id` | Any of `{title,releaseYear,overview,tmdbId,approvalStatus,eligible}` |
 | POST | `/api/admin/movies/:id/merge` | `{targetId}` → reuse existing movie |
-| GET | `/api/admin/users` | Four account details |
+| GET | `/api/admin/users` | Account recovery list; app administrator only |
 | POST | `/api/admin/users/:id/reset` | Private recovery URL + expiry |
 
 Pagination defaults to 30, maximum 100. Reviews are plain text, maximum 10000 characters. Unknown body properties are rejected. Local search continues to work when TMDB is unavailable.
@@ -153,7 +172,7 @@ Tests exercise real PostgreSQL transactions for authentication, concurrent draws
 ## Vercel + Neon
 
 1. Create a free Neon PostgreSQL project in a region near your Vercel backend. Copy the **pooled** connection URL and keep its TLS parameters (`sslmode=require` or the provider's stronger verified settings). Never disable certificate verification.
-2. Use that URL as `DATABASE_URL` locally to run migrations and provision the four voting profiles and separate admin account. Back up an existing database before applying migrations.
+2. Use that URL as `DATABASE_URL` locally to run migrations and provision initial accounts as needed. Back up an existing database before applying migrations.
 3. Create a Vercel project with **Root Directory `backend`** and the Express framework preset. Set `DATABASE_URL`, `APP_ORIGIN` (your frontend's final HTTPS origin), `NODE_ENV=production`, and optional `TMDB_TOKEN`.
 4. Create a frontend Vercel project with **Root Directory `frontend`**, Vite preset, build `npm run build`, output `dist`. Enable inclusion of files outside the root directory for workspace/type-only imports.
 5. Add the frontend rewrite below using your backend's deployment hostname, keeping it before SPA fallback. The browser calls the frontend's `/api`; cookies remain on the frontend origin. Do not call the separate backend hostname directly from browser code.
