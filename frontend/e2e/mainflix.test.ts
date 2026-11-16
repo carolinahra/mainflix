@@ -34,12 +34,17 @@ class BrowserFixture {
           '003_optional_email.sql',
           '004_half_point_reviews.sql',
           '005_profiles_favorites.sql',
+          '006_groups.sql',
         ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )
-    await sql`TRUNCATE users,movies,rounds,rate_limits RESTART IDENTITY CASCADE`.execute(
+    await sql`TRUNCATE users,movies,rounds,groups,rate_limits RESTART IDENTITY CASCADE`.execute(
       this.database.client,
     )
+    await this.database.client
+      .insertInto('groups')
+      .values({ name: 'Mainflix', owner_id: null })
+      .execute()
     await this.container.userService.create(
       'admin@example.com',
       'admin',
@@ -81,7 +86,8 @@ class BrowserFixture {
     await page.getByLabel('Username or email', { exact: true }).fill(email.split('@')[0]!)
     await page.getByLabel('Password', { exact: true }).fill('Browser test password!')
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.locator('.profile-menu > summary').waitFor()
+    await page.getByRole('button', { name: 'Mainflix', exact: true }).click()
+    await page.locator('.group-toolbar').waitFor()
   }
   async profile(page: Page): Promise<void> {
     await page.locator('.profile-menu > summary').click()
@@ -212,6 +218,7 @@ test(
       await section.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
       assert.equal(await page.locator('.winner').count(), 0)
       await page.reload()
+      await page.getByRole('button', { name: 'Mainflix', exact: true }).click()
       await section.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
       await section.screenshot({ path: '/tmp/mainflix-to-review-desktop.png' })
       await page.setViewportSize({ width: 320, height: 568 })
@@ -278,6 +285,7 @@ test(
       assert.ok(avatar?.startsWith('data:image/webp;base64,'))
       assert.equal(await page.locator('.profile-menu summary img').getAttribute('src'), avatar)
       await page.reload()
+      await page.getByRole('button', { name: 'Mainflix', exact: true }).click()
       await f.profile(page)
       assert.equal(await page.getByLabel('Username', { exact: true }).inputValue(), 'luna')
       assert.equal(await page.locator('.profile-photo > img').getAttribute('src'), avatar)
@@ -333,6 +341,7 @@ test(
       await page.getByLabel('Username or email', { exact: true }).fill('luna')
       await page.getByLabel('Password', { exact: true }).fill('Changed test password!')
       await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+      await page.getByRole('button', { name: 'Mainflix', exact: true }).click()
       await f.profile(page)
       await page.getByText('You have no favorite movies yet.', { exact: true }).waitFor()
       assert.equal(
@@ -739,6 +748,7 @@ test(
       await admin.screenshot({ path: '/tmp/mainflix-selected-review-mobile.png', fullPage: true })
       await admin.setViewportSize({ width: 1280, height: 900 })
       await admin.reload()
+      await admin.getByRole('button', { name: 'Mainflix', exact: true }).click()
       await admin.locator('.winner .text-button').click()
       await admin.locator('.review').getByText('A great movie night.', { exact: true }).waitFor()
       assert.equal(await admin.getByRole('radio', { name: '4.5/5', exact: true }).isChecked(), true)
@@ -940,6 +950,110 @@ test(
         await page.screenshot({ path: `/tmp/mainflix-week-${width}x${height}.png`, fullPage: true })
         await page.getByRole('button', { name: 'Catálogo', exact: true }).click()
       }
+    } finally {
+      await f.close()
+    }
+  },
+)
+
+test(
+  'named groups and both invitation types work on desktop and mobile',
+  { timeout: 120_000 },
+  async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare()
+      const owner = await f.page()
+      await f.login(owner, 'friend1')
+      await owner
+        .locator('.group-toolbar')
+        .getByRole('button', { name: 'Switch group', exact: true })
+        .click()
+      await owner.getByLabel('Group name', { exact: true }).fill('🍿 Family')
+      await owner.getByRole('button', { name: 'Create group', exact: true }).click()
+      await owner.locator('.group-toolbar strong').getByText('🍿 Family', { exact: true }).waitFor()
+      await owner.locator('.profile-menu > summary').click()
+      await owner.getByRole('button', { name: 'Invite to Mainflix', exact: true }).click()
+      const appLink = await owner
+        .getByLabel('Private invitation link', { exact: true })
+        .inputValue()
+      const guest = await f.page(true)
+      await guest.goto(appLink)
+      await guest.getByLabel('Username', { exact: true }).fill('invited_friend')
+      await guest.getByLabel('Password', { exact: true }).fill('New friend password!')
+      await guest.getByRole('button', { name: 'Create account', exact: true }).click()
+      await guest
+        .getByText('Create your first group to start your movie nights.', { exact: true })
+        .waitFor()
+      assert.equal(await guest.getByRole('button', { name: '🍿 Family', exact: true }).count(), 0)
+      await f.profile(guest)
+      await guest.getByRole('heading', { name: 'My profile', exact: true }).waitFor()
+      await guest.locator('.profile-menu > summary').click()
+      await guest.getByRole('button', { name: 'Switch group', exact: true }).click()
+      await guest.getByLabel('Group name', { exact: true }).fill('Friends')
+      await guest.getByRole('button', { name: 'Create group', exact: true }).click()
+      await guest.locator('.group-toolbar strong').getByText('Friends', { exact: true }).waitFor()
+      await owner.getByRole('button', { name: 'Invite to this group', exact: true }).click()
+      const groupLink = await owner
+        .getByLabel('Private invitation link', { exact: true })
+        .inputValue()
+      assert.notEqual(groupLink, appLink)
+      await guest.goto(groupLink)
+      await guest
+        .getByRole('heading', { name: "You're invited to 🍿 Family", exact: true })
+        .waitFor()
+      await guest.getByRole('button', { name: 'Accept invitation', exact: true }).click()
+      await guest.getByRole('button', { name: '🍿 Family', exact: true }).waitFor()
+      await guest.screenshot({ path: '/tmp/mainflix-groups-mobile.png', fullPage: true })
+      await guest.getByRole('button', { name: '🍿 Family', exact: true }).click()
+      await guest.locator('.group-toolbar strong').getByText('🍿 Family', { exact: true }).waitFor()
+      assert.equal(
+        await guest.getByRole('button', { name: 'Invite to this group', exact: true }).count(),
+        0,
+      )
+      assert.equal(
+        await guest.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await owner.getByText('Submit a missing movie', { exact: true }).click()
+      await owner.getByLabel('Movie title', { exact: true }).fill('Family only film')
+      await owner.getByRole('button', { name: 'Add movie', exact: true }).click()
+      await owner
+        .locator('#movie-catalogue')
+        .getByRole('button', { name: 'Family only film', exact: true })
+        .waitFor()
+      await guest
+        .locator('.group-toolbar')
+        .getByRole('button', { name: 'Switch group', exact: true })
+        .click()
+      await guest.getByRole('button', { name: 'Friends', exact: true }).click()
+      await guest.locator('.group-toolbar strong').getByText('Friends', { exact: true }).waitFor()
+      assert.equal(
+        await guest.getByRole('button', { name: 'Family only film', exact: true }).count(),
+        0,
+      )
+      await owner.screenshot({ path: '/tmp/mainflix-family-desktop.png', fullPage: true })
+      await owner.getByRole('button', { name: 'Invite to this group', exact: true }).click()
+      const existingLink = await owner
+        .getByLabel('Private invitation link', { exact: true })
+        .inputValue()
+      assert.notEqual(existingLink, groupLink)
+      const existing = await f.page(true)
+      await existing.goto(existingLink)
+      await existing.getByRole('button', { name: 'I already have an account', exact: true }).click()
+      await existing.getByLabel('Username or email', { exact: true }).fill('friend2')
+      await existing.getByLabel('Password', { exact: true }).fill('Browser test password!')
+      assert.equal(
+        await existing.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await existing.screenshot({
+        path: '/tmp/mainflix-invitation-login-mobile.png',
+        fullPage: true,
+      })
+      await existing.getByRole('button', { name: 'Sign in', exact: true }).click()
+      await existing.getByRole('button', { name: 'Accept invitation', exact: true }).click()
+      await existing.getByRole('button', { name: '🍿 Family', exact: true }).waitFor()
     } finally {
       await f.close()
     }

@@ -10,6 +10,7 @@ test('profile navigation uses an avatar dropdown and the creeper is the default 
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     loading: false,
     tab: 'profile',
     user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
@@ -31,6 +32,7 @@ test('random nomination offers filters and confirmation only while a player can 
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     loading: false,
     user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
     round: {
@@ -58,6 +60,7 @@ test('random nomination offers filters and confirmation only while a player can 
   assert.match(renderToStaticMarkup(app.render()), />Nominate</)
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     randomOpen: true,
     randomMovie: {
       tmdb_id: 1,
@@ -75,7 +78,11 @@ test('random nomination offers filters and confirmation only while a player can 
   assert.match(markup, /Accept and nominate/)
   assert.match(markup, /Try again/)
   assert.match(markup, /Cancel/)
-  app.state = { ...app.state, user: { ...app.state.user!, is_admin: true } }
+  app.state = {
+    ...app.state,
+    user: { ...app.state.user!, is_admin: true },
+    group: { id: 1, name: 'Mainflix', is_owner: true, can_vote: false },
+  }
   assert.doesNotMatch(renderToStaticMarkup(app.render()), /Accept and nominate|>Random movie</)
 })
 
@@ -84,6 +91,7 @@ test('discovery features requested films and puts favorite genres before other b
   const app = new Mainflix({ container: { i18n: new I18n('es') } as Container })
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     loading: false,
     tab: 'catalogue',
     user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
@@ -149,6 +157,7 @@ test('movie search explains missing TMDB configuration separately from an outage
   const app = new Mainflix({ container: container as Container })
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     loading: false,
     tab: 'catalogue',
     user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
@@ -169,6 +178,7 @@ test('weekly party progress counts actual responses including skips without inve
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     loading: false,
     user: {
       id: 1,
@@ -208,11 +218,13 @@ test('weekly party progress counts actual responses including skips without inve
   app.state = {
     ...app.state,
     user: { ...app.state.user!, is_admin: true },
+    group: { id: 1, name: 'Mainflix', is_owner: true, can_vote: false },
     search: {
       ...app.state.search,
       local: [
         {
           id: 1,
+          group_id: 1,
           title: 'Approved film',
           tmdb_id: null,
           release_year: 2020,
@@ -252,6 +264,7 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
   const winner = {
     id: 2,
+    group_id: 1,
     title: 'Arrival',
     tmdb_id: null,
     release_year: 2016,
@@ -266,6 +279,7 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
   }
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     loading: false,
     spinning: true,
     user: {
@@ -308,6 +322,7 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
 
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     spinning: true,
     round: {
       ...app.state.round!,
@@ -321,6 +336,7 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
   assert.doesNotMatch(solo, /undefined|NaN|Infinity/)
   app.state = {
     ...app.state,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
     round: {
       ...app.state.round!,
       winner: { ...winner, title: 'The Grand Budapest Hotel' },
@@ -330,4 +346,87 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
   const longTitle = renderToStaticMarkup(app.render())
   assert.equal(longTitle.match(/<title>The Grand Budapest Hotel<\/title>/g)?.length, 8)
   assert.equal(longTitle.match(/textLength="100"/g)?.length, 8)
+})
+
+test('signed-in accounts choose named groups and can invite someone without joining a group', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    user: { id: 1, name: 'Owner', email: null, username: 'owner', is_admin: false, avatar: null },
+    groups: [{ id: 2, name: 'Family', is_owner: true, can_vote: true }],
+    group: null,
+  }
+  const markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /Choose your group/)
+  assert.match(markup, />Family</)
+  assert.match(markup, /Group name/)
+  assert.match(markup, /Invite to Mainflix/)
+  assert.doesNotMatch(markup, />Skip this week</)
+})
+
+test('invitation signup identifies the named group and offers existing-account login', () => {
+  Object.defineProperty(globalThis, 'location', {
+    value: { hash: '#invite=token' },
+    configurable: true,
+  })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    invitation: { groupName: 'Family', expiresAt: '2026-11-23T12:00:00Z' },
+  }
+  const markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /Family/)
+  assert.match(markup, /Create account/)
+  assert.match(markup, /I already have an account/)
+  assert.match(markup, /autoComplete="new-password"/)
+  app.state = { ...app.state, invitation: { groupName: null, expiresAt: '2026-11-23T12:00:00Z' } }
+  assert.match(renderToStaticMarkup(app.render()), /does not join the inviter/)
+})
+
+test('personal favorites from another group do not offer nomination in the current group', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'profile',
+    user: { id: 1, name: 'Owner', username: 'owner', email: null, is_admin: false, avatar: null },
+    group: { id: 2, name: 'Family', is_owner: true, can_vote: true },
+    round: {
+      week: '2026-11-16',
+      status: 'collecting',
+      winner: null,
+      winner_id: null,
+      drawn_by: null,
+      drawn_at: null,
+      ends_at: '2026-11-23T00:00:00Z',
+      responses: [],
+      members: [],
+    },
+    favorites: [
+      {
+        id: 1,
+        group_id: 3,
+        title: 'Friends movie',
+        tmdb_id: null,
+        release_year: null,
+        overview: '',
+        poster_path: null,
+        approval_status: 'approved',
+        submitted_by: 1,
+        eligible: true,
+        eligibility_changed_by: null,
+        eligibility_changed_at: null,
+        created_at: '2026-11-16T12:00:00Z',
+      },
+    ],
+  }
+  assert.doesNotMatch(renderToStaticMarkup(app.render()), />Nominate</)
+  app.state = { ...app.state, group: null }
+  const markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /Go to my profile/)
+  assert.match(markup, /My profile/)
 })

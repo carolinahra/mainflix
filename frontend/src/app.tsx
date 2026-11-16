@@ -5,6 +5,7 @@ import type { TranslationKey, Language } from './i18n.js'
 import type {
   Serialized,
   User,
+  Group,
   Movie,
   MovieSearch,
   MovieMetadata,
@@ -25,6 +26,12 @@ interface Props {
   container: Container
 }
 interface State {
+  groups: Group[]
+  group: Group | null
+  inviteToken: string | null
+  invitation: { groupName: string | null; expiresAt: string } | null
+  invitationLogin: boolean
+  invitationLink: { url: string; expiresAt: string } | null
   loading: boolean
   busy: boolean
   user: User | null
@@ -68,6 +75,12 @@ export class Mainflix extends Component<Props, State> {
   private searchController: AbortController | undefined
   private readonly browseControllers = new Map<MovieCategory, AbortController>()
   override state: State = {
+    groups: [],
+    group: null,
+    inviteToken: location.hash.startsWith('#invite=') ? location.hash.slice(8) : null,
+    invitation: null,
+    invitationLogin: false,
+    invitationLink: null,
     loading: true,
     busy: false,
     user: null,
@@ -99,24 +112,254 @@ export class Mainflix extends Component<Props, State> {
     randomFrom: '',
     randomTo: '',
   }
+  private get canVote(): boolean {
+    return Boolean(this.state.group?.can_vote)
+  }
+  private get canManage(): boolean {
+    return Boolean(this.state.group?.is_owner)
+  }
+  private async loadGroups(): Promise<void> {
+    const groups = await this.props.container.api.request<Group[]>('/groups')
+    this.setState({ groups })
+  }
+  private async selectGroup(group: Group): Promise<void> {
+    const { user, groups } = this.state
+    this.clearSession()
+    this.props.container.api.groupId = group.id
+    await new Promise<void>((resolve) => this.setState({ user, groups, group }, resolve))
+    await this.refreshRound()
+    await this.search('')
+    this.loadDiscovery()
+  }
+  private chooseGroups(): void {
+    const user = this.state.user
+    this.clearSession()
+    this.setState({ user }, () => {
+      void this.perform(() => this.loadGroups())
+    })
+  }
+  private createGroup(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const name = new FormData(event.currentTarget).get('name')
+    void this.perform(async () => {
+      const group = await this.props.container.api.request<Group>('/groups', 'POST', { name })
+      await this.loadGroups()
+      await this.selectGroup(group)
+    })
+  }
+  private invite(groupId?: number): void {
+    this.setState({ invitationLink: null })
+    void this.perform(async () => {
+      const invitationLink = await this.props.container.api.request<{
+        url: string
+        expiresAt: string
+      }>('/invitations', 'POST', groupId === undefined ? {} : { groupId })
+      this.setState({ invitationLink })
+    })
+  }
+  private finishInvitation(): void {
+    history.replaceState(null, '', location.pathname + location.search)
+    this.setState({ inviteToken: null, invitation: null, invitationLogin: false })
+  }
+  private register(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    void this.perform(async () => {
+      const user = await this.props.container.api.request<User>('/auth/register', 'POST', {
+        token: this.state.inviteToken,
+        username: data.get('username'),
+        password: data.get('password'),
+      })
+      this.clearSession()
+      this.finishInvitation()
+      this.setState({ user })
+      await this.loadGroups()
+    })
+  }
+  private acceptInvitation(): void {
+    void this.perform(async () => {
+      const groups = await this.props.container.api.request<Group[]>(
+        `/invitations/${this.state.inviteToken}/accept`,
+        'POST',
+        {},
+      )
+      this.finishInvitation()
+      this.setState({ groups })
+    })
+  }
+  private renderInvitationLink(): ReactNode {
+    const link = this.state.invitationLink
+    if (!link) return null
+    return (
+      <section className="invitation-link" aria-live="polite">
+        <label>
+          {this.t('copyInvitation')}
+          <input value={link.url} readOnly onFocus={(event) => event.currentTarget.select()} />
+        </label>
+        <p>
+          {this.t('invitationExpires')}{' '}
+          {new Date(link.expiresAt).toLocaleString(this.state.language)}
+        </p>
+        <button
+          onClick={() => {
+            void this.perform(async () => {
+              await navigator.clipboard.writeText(link.url)
+              this.setState({ message: 'invitationCopied' })
+            })
+          }}
+        >
+          {this.t('copyLink')}
+        </button>
+        <button onClick={() => this.setState({ invitationLink: null })}>{this.t('close')}</button>
+      </section>
+    )
+  }
+  private renderGroups(): ReactNode {
+    return (
+      <section className="groups-page">
+        <h1>{this.t('chooseGroup')}</h1>
+        {!this.state.groups.length && <p>{this.t('firstGroup')}</p>}
+        <div className="group-grid">
+          {this.state.groups.map((group) => (
+            <button
+              className="group-card"
+              key={group.id}
+              disabled={this.state.busy}
+              onClick={() => {
+                void this.perform(() => this.selectGroup(group))
+              }}
+            >
+              {group.name}
+            </button>
+          ))}
+        </div>
+        <form onSubmit={this.createGroup.bind(this)}>
+          <label>
+            {this.t('groupName')}
+            <input name="name" required maxLength={80} />
+          </label>
+          <button className="primary" disabled={this.state.busy}>
+            {this.t('createGroup')}
+          </button>
+        </form>
+        <button disabled={this.state.busy} onClick={() => this.invite()}>
+          {this.t('inviteToApp')}
+        </button>
+        {this.renderInvitationLink()}
+      </section>
+    )
+  }
+  private renderInvitation(): ReactNode {
+    const invite = this.state.invitation
+    return (
+      <section className="auth-panel invitation-page">
+        <h1>
+          {invite?.groupName
+            ? `${this.t('invitedToGroup')} ${invite.groupName}`
+            : this.t('invitedToApp')}
+        </h1>
+        {invite && (
+          <>
+            <p>{this.t(invite.groupName ? 'groupInvitationHint' : 'appInvitationHint')}</p>
+            {this.state.user ? (
+              <>
+                <p>
+                  {this.t('signedInAs')} @{this.state.user.username}
+                </p>
+                <button
+                  className="primary"
+                  disabled={this.state.busy}
+                  onClick={this.acceptInvitation.bind(this)}
+                >
+                  {this.t('acceptInvitation')}
+                </button>
+              </>
+            ) : this.state.invitationLogin ? (
+              this.renderLogin()
+            ) : (
+              <>
+                <form onSubmit={this.register.bind(this)}>
+                  <label>
+                    {this.t('username')}
+                    <input
+                      name="username"
+                      required
+                      minLength={3}
+                      maxLength={32}
+                      pattern="[A-Za-z0-9_]{3,32}"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label>
+                    {this.t('password')}
+                    <input
+                      name="password"
+                      type="password"
+                      required
+                      minLength={6}
+                      maxLength={128}
+                      autoComplete="new-password"
+                    />
+                  </label>
+                  <button className="primary" disabled={this.state.busy}>
+                    {this.t('createAccount')}
+                  </button>
+                </form>
+                <button onClick={() => this.setState({ invitationLogin: true })}>
+                  {this.t('alreadyHaveAccount')}
+                </button>
+              </>
+            )}
+          </>
+        )}
+        <button
+          onClick={() => {
+            this.finishInvitation()
+            if (this.state.user) void this.loadGroups()
+          }}
+        >
+          {this.t('cancel')}
+        </button>
+      </section>
+    )
+  }
   private t(key: TranslationKey): string {
     return this.props.container.i18n.t(key)
   }
   override componentDidMount(): void {
     void this.initialize()
+    window.addEventListener('hashchange', this.hashChanged)
     this.poll = setInterval((): void => {
-      if (this.state.user && !document.hidden) void this.refreshRound()
+      if (this.state.user && this.state.group && !document.hidden) void this.refreshRound()
     }, 5000)
   }
+  private readonly hashChanged = (): void => {
+    this.setState(
+      {
+        inviteToken: location.hash.startsWith('#invite=') ? location.hash.slice(8) : null,
+        invitation: null,
+        invitationLogin: false,
+        error: null,
+      },
+      () => {
+        void this.initialize()
+      },
+    )
+  }
   override componentWillUnmount(): void {
+    window.removeEventListener('hashchange', this.hashChanged)
     clearInterval(this.poll)
     clearTimeout(this.debounce)
     clearTimeout(this.spinTimer)
+
     this.randomController?.abort()
     this.searchController?.abort()
     this.browseControllers.forEach((controller) => controller.abort())
   }
   private clearSession(): void {
+    this.props.container.api.groupId = null
     this.profileMenu.current?.removeAttribute('open')
     this.randomController?.abort()
     this.searchController?.abort()
@@ -124,10 +367,16 @@ export class Mainflix extends Component<Props, State> {
     this.browseControllers.clear()
     clearTimeout(this.debounce)
     clearTimeout(this.spinTimer)
+
     this.dialog.current?.close()
     this.randomDialog.current?.close()
     this.setState({
       user: null,
+      error: null,
+
+      groups: [],
+      group: null,
+      invitationLink: null,
       round: null,
       tab: 'week',
       query: '',
@@ -155,14 +404,22 @@ export class Mainflix extends Component<Props, State> {
   }
   private async initialize(): Promise<void> {
     try {
-      const user: User = await this.props.container.api.request('/auth/me')
+      if (this.state.inviteToken) {
+        const invitation = await this.props.container.api.request<{
+          groupName: string | null
+          expiresAt: string
+        }>(`/invitations/${this.state.inviteToken}`)
+        this.setState({ invitation })
+      }
+      const user = await this.props.container.api.request<User>('/auth/me')
       this.clearSession()
       this.setState({ user })
-      await this.refreshRound()
-      await this.search('')
-      this.loadDiscovery()
+      await this.loadGroups()
     } catch (error: unknown) {
-      if (!(error instanceof ApiException && error.status === 401))
+      if (!(
+        error instanceof ApiException &&
+        (error.status === 401 || error.code === 'STALE_REQUEST')
+      ))
         this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
     } finally {
       this.setState({ loading: false })
@@ -173,6 +430,7 @@ export class Mainflix extends Component<Props, State> {
     try {
       await work()
     } catch (error: unknown) {
+      if (error instanceof ApiException && error.code === 'STALE_REQUEST') return
       if (
         error instanceof ApiException &&
         error.status === 401 &&
@@ -190,12 +448,21 @@ export class Mainflix extends Component<Props, State> {
     try {
       const round: Serialized<RoundState> =
         await this.props.container.api.request('/rounds/current')
-      this.setState({ round })
+      this.setState((state) => ({
+        round,
+        group: state.group
+          ? {
+              ...state.group,
+              can_vote: round.members.some((member) => member.id === state.user?.id),
+            }
+          : null,
+      }))
       if (this.state.tab === 'week') {
         const toReview: Film[] = await this.props.container.api.request('/movies/to-review')
         this.setState({ toReview })
       }
     } catch (error: unknown) {
+      if (error instanceof ApiException && error.code === 'STALE_REQUEST') return
       if (error instanceof ApiException && error.status === 401) this.clearSession()
       else this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
     }
@@ -210,9 +477,7 @@ export class Mainflix extends Component<Props, State> {
       })
       this.clearSession()
       this.setState({ user })
-      await this.refreshRound()
-      await this.search('')
-      this.loadDiscovery()
+      await this.loadGroups()
     })
   }
   private logout(): void {
@@ -249,7 +514,7 @@ export class Mainflix extends Component<Props, State> {
     this.props.container.i18n.current = language
     this.setState({ randomMovie: null, randomLoading: false, randomError: null })
     this.setState({ language }, (): void => {
-      if (this.state.user) void this.search(this.state.query)
+      if (this.state.user && this.state.group) void this.search(this.state.query)
       this.browseControllers.forEach((controller) => controller.abort())
       this.setState({ browse: {}, browseLoading: {} }, () => this.loadDiscovery())
     })
@@ -333,10 +598,8 @@ export class Mainflix extends Component<Props, State> {
     const userId = this.state.user?.id
     await this.perform(async () => {
       const [favorites, myReviews] = await Promise.all([
-        this.props.container.api.request<Film[]>('/movies/favorites?limit=30'),
-        this.props.container.api.request<Serialized<ReviewedMovie>[]>(
-          '/movies/reviews?mine=true&limit=30',
-        ),
+        this.props.container.api.request<Film[]>('/auth/favorites?limit=30'),
+        this.props.container.api.request<Serialized<ReviewedMovie>[]>('/auth/reviews?limit=30'),
       ])
       if (this.state.user?.id === userId) this.setState({ favorites, myReviews })
     })
@@ -345,7 +608,7 @@ export class Mainflix extends Component<Props, State> {
     const userId = this.state.user?.id
     await this.perform(async () => {
       const rows: Film[] = await this.props.container.api.request(
-        `/movies/favorites?limit=30&offset=${this.state.favorites.length}`,
+        `/auth/favorites?limit=30&offset=${this.state.favorites.length}`,
       )
       if (this.state.user?.id === userId)
         this.setState((state) => ({ favorites: [...state.favorites, ...rows] }))
@@ -355,7 +618,7 @@ export class Mainflix extends Component<Props, State> {
     const userId = this.state.user?.id
     await this.perform(async () => {
       const rows: Serialized<ReviewedMovie>[] = await this.props.container.api.request(
-        `/movies/reviews?mine=true&limit=30&offset=${this.state.myReviews.length}`,
+        `/auth/reviews?limit=30&offset=${this.state.myReviews.length}`,
       )
       if (this.state.user?.id === userId)
         this.setState((state) => ({ myReviews: [...state.myReviews, ...rows] }))
@@ -364,12 +627,20 @@ export class Mainflix extends Component<Props, State> {
   private favorite(movie: Film, favorite: boolean): void {
     const userId = this.state.user?.id
     void this.perform(async () => {
+      if (movie.group_id !== this.state.group?.id) {
+        const group = this.state.groups.find((group) => group.id === movie.group_id)
+        if (group) {
+          await this.selectGroup(group)
+          await new Promise<void>((resolve) => this.setState({ tab: 'profile' }, resolve))
+          await this.loadProfile()
+        }
+      }
       await this.props.container.api.request(
         `/movies/${movie.id}/favorite`,
         favorite ? 'PUT' : 'DELETE',
         {},
       )
-      const favorites: Film[] = await this.props.container.api.request('/movies/favorites?limit=30')
+      const favorites: Film[] = await this.props.container.api.request('/auth/favorites?limit=30')
       if (this.state.user?.id !== userId) return
       this.setState((state) => ({
         favorites,
@@ -435,7 +706,7 @@ export class Mainflix extends Component<Props, State> {
     }
   }
   private loadDiscovery(): void {
-    if (!this.state.user) return
+    if (!this.state.user || !this.state.group) return
     const categories: MovieCategory[] = [
       'featured',
       'romanticComedy',
@@ -593,7 +864,7 @@ export class Mainflix extends Component<Props, State> {
     })
   }
   private renderRandom(): ReactNode {
-    if (this.state.user?.is_admin || this.state.round?.status !== 'collecting') return null
+    if (!this.canVote || this.state.round?.status !== 'collecting') return null
     const { randomMovie, randomLoading, busy } = this.state
     const categories: MovieCategory[] = [
       'popular',
@@ -814,6 +1085,13 @@ export class Mainflix extends Component<Props, State> {
   }
   private openMovie(id: number): void {
     void this.perform(async (): Promise<void> => {
+      const personalMovie =
+        this.state.favorites.find((movie) => movie.id === id) ??
+        this.state.myReviews.find((entry) => entry.movie.id === id)?.movie
+      if (personalMovie && personalMovie.group_id !== this.state.group?.id) {
+        const group = this.state.groups.find((group) => group.id === personalMovie.group_id)
+        if (group) await this.selectGroup(group)
+      }
       const detail: Detail = await this.props.container.api.request(`/movies/${id}`)
       this.setState({ detail }, (): void => {
         if (!this.dialog.current?.open) this.dialog.current?.showModal()
@@ -882,10 +1160,11 @@ export class Mainflix extends Component<Props, State> {
     await this.perform(async (): Promise<void> => {
       const [pending, accounts] = await Promise.all([
         this.props.container.api.request<Film[]>('/admin/movies/pending?limit=100'),
-        this.props.container.api.request<User[]>('/admin/users'),
+        this.state.user?.is_admin
+          ? this.props.container.api.request<User[]>('/admin/users')
+          : Promise.resolve([]),
       ])
-      if (this.state.user?.id === userId && this.state.user?.is_admin)
-        this.setState({ pending, accounts })
+      if (this.state.user?.id === userId && this.canManage) this.setState({ pending, accounts })
     })
   }
   private updateMovie(id: number, patch: MoviePatch): void {
@@ -956,8 +1235,9 @@ export class Mainflix extends Component<Props, State> {
   }
   private renderCard(movie: Film): ReactNode {
     const canNominate: boolean =
-      !this.state.user?.is_admin &&
+      this.canVote &&
       this.state.round?.status === 'collecting' &&
+      movie.group_id === this.state.group?.id &&
       movie.eligible &&
       movie.approval_status === 'approved'
     return (
@@ -990,7 +1270,7 @@ export class Mainflix extends Component<Props, State> {
     )
   }
   private renderRemoteCard(movie: MovieMetadata): ReactNode {
-    const canNominate = !this.state.user?.is_admin && this.state.round?.status === 'collecting'
+    const canNominate = this.canVote && this.state.round?.status === 'collecting'
     return (
       <article className="movie-card" key={`tmdb-${movie.tmdb_id}`}>
         {this.renderPoster(movie)}
@@ -1300,7 +1580,7 @@ export class Mainflix extends Component<Props, State> {
             </div>
             <p className="muted">{this.t('resetTime')}</p>
           </div>
-          {round.status === 'collecting' && !this.state.user?.is_admin && (
+          {round.status === 'collecting' && this.canVote && (
             <button disabled={this.state.busy} onClick={(): void => this.nominate(null)}>
               {this.t('skip')}
             </button>
@@ -1351,7 +1631,7 @@ export class Mainflix extends Component<Props, State> {
           <p className="hero-description">{this.t('heroDescription')}</p>
           {this.state.user && (
             <div className="hero-actions">
-              {!this.state.user.is_admin && (
+              {this.canVote && (
                 <button
                   className="primary"
                   onClick={(): void => {
@@ -1574,7 +1854,7 @@ export class Mainflix extends Component<Props, State> {
     )
   }
   private renderAdmin(): ReactNode {
-    if (!this.state.user?.is_admin) return this.renderWeek()
+    if (!this.canManage) return this.renderWeek()
     return (
       <section>
         <h1>{this.t('admin')}</h1>
@@ -1582,7 +1862,7 @@ export class Mainflix extends Component<Props, State> {
         <div className="movie-grid">
           {this.state.pending.map((movie) => this.renderCard(movie))}
         </div>
-        <h2>{this.t('accounts')}</h2>
+        {this.state.user?.is_admin && <h2>{this.t('accounts')}</h2>}
         {this.state.accounts.map((user) => (
           <article className="account" key={user.id}>
             <strong>{user.name}</strong>
@@ -1690,7 +1970,7 @@ export class Mainflix extends Component<Props, State> {
         ) : (
           <p className="muted">{this.t('watchFirst')}</p>
         )}
-        {this.state.user?.is_admin && (
+        {this.canManage && (
           <details>
             <summary>{this.t('edit')}</summary>
             <form
@@ -1765,8 +2045,8 @@ export class Mainflix extends Component<Props, State> {
   }
   private renderLogin(): ReactNode {
     return (
-      <div className="auth-layout">
-        {this.renderWelcome()}
+      <div className={this.state.inviteToken ? undefined : 'auth-layout'}>
+        {!this.state.inviteToken && this.renderWelcome()}
         <section className="auth-panel">
           <p className="eyebrow">MAINFLIX</p>
           <h1>{this.t(this.state.resetToken ? 'resetPassword' : 'login')}</h1>
@@ -1813,7 +2093,7 @@ export class Mainflix extends Component<Props, State> {
             <img src="/art/mainflix-mark.webp" alt="" width="64" height="64" />
             MAIN<span>FLIX</span>
           </a>
-          {this.state.user && (
+          {this.state.user && this.state.group && (
             <nav aria-label="Mainflix">
               {(
                 [
@@ -1821,7 +2101,7 @@ export class Mainflix extends Component<Props, State> {
                   'catalogue',
                   'history',
                   'reviews',
-                  ...(this.state.user.is_admin ? ['admin'] : []),
+                  ...(this.canManage ? ['admin'] : []),
                 ] as Tab[]
               ).map((tab) => (
                 <button
@@ -1871,6 +2151,12 @@ export class Mainflix extends Component<Props, State> {
               </summary>
               <div className="profile-menu-panel">
                 <button onClick={() => this.navigate('profile')}>{this.t('goToProfile')}</button>
+                <button disabled={this.state.busy} onClick={this.chooseGroups.bind(this)}>
+                  {this.t('switchGroup')}
+                </button>
+                <button disabled={this.state.busy} onClick={() => this.invite()}>
+                  {this.t('inviteToApp')}
+                </button>
                 <button onClick={this.logout.bind(this)} disabled={this.state.busy}>
                   {this.t('logout')}
                 </button>
@@ -1898,10 +2184,36 @@ export class Mainflix extends Component<Props, State> {
           )}
           {this.state.loading ? (
             <p>{this.t('loading')}</p>
+          ) : this.state.inviteToken && !this.state.resetToken ? (
+            this.renderInvitation()
           ) : this.state.resetToken || !this.state.user ? (
             this.renderLogin()
+          ) : !this.state.group ? (
+            this.state.tab === 'profile' ? (
+              this.renderProfile()
+            ) : (
+              this.renderGroups()
+            )
           ) : (
             <>
+              <section className="group-toolbar">
+                <strong>{this.state.group.name}</strong>
+                <button disabled={this.state.busy} onClick={this.chooseGroups.bind(this)}>
+                  {this.t('switchGroup')}
+                </button>
+                {this.state.group.is_owner && (
+                  <button
+                    disabled={this.state.busy}
+                    onClick={() => this.invite(this.state.group!.id)}
+                  >
+                    {this.t('inviteToGroup')}
+                  </button>
+                )}
+                {!this.state.group.can_vote && !this.state.user.is_admin && (
+                  <span>{this.t('votingNextWeek')}</span>
+                )}
+              </section>
+              {this.renderInvitationLink()}
               {this.state.tab === 'week' ? (
                 this.renderWeek()
               ) : this.state.tab === 'catalogue' ? (
