@@ -19,8 +19,8 @@ import type {
 } from '../../backend/src/models/entities.js'
 
 type Film = Serialized<Movie>
-type Detail = { movie: Film } & Serialized<MovieReviews>
-type Tab = 'week' | 'catalogue' | 'history' | 'reviews' | 'admin'
+type Detail = { movie: Film; favorite: boolean } & Serialized<MovieReviews>
+type Tab = 'week' | 'catalogue' | 'history' | 'reviews' | 'profile' | 'admin'
 interface Props {
   container: Container
 }
@@ -38,6 +38,9 @@ interface State {
   detail: Detail | null
   history: Serialized<HistoryEntry>[]
   reviewed: Serialized<ReviewedMovie>[]
+  myReviews: Serialized<ReviewedMovie>[]
+  favorites: Film[]
+  toReview: Film[]
   pending: Film[]
   accounts: User[]
   message: TranslationKey | null
@@ -54,6 +57,7 @@ interface State {
   randomTo: string
 }
 export class Mainflix extends Component<Props, State> {
+  private readonly profileMenu = createRef<HTMLDetailsElement>()
   private readonly dialog = createRef<HTMLDialogElement>()
   private readonly randomDialog = createRef<HTMLDialogElement>()
   private readonly roulette = createRef<HTMLDivElement>()
@@ -77,6 +81,9 @@ export class Mainflix extends Component<Props, State> {
     detail: null,
     history: [],
     reviewed: [],
+    myReviews: [],
+    favorites: [],
+    toReview: [],
     pending: [],
     accounts: [],
     message: null,
@@ -110,6 +117,7 @@ export class Mainflix extends Component<Props, State> {
     this.browseControllers.forEach((controller) => controller.abort())
   }
   private clearSession(): void {
+    this.profileMenu.current?.removeAttribute('open')
     this.randomController?.abort()
     this.searchController?.abort()
     this.browseControllers.forEach((controller) => controller.abort())
@@ -129,6 +137,9 @@ export class Mainflix extends Component<Props, State> {
       genre: 'action',
       history: [],
       reviewed: [],
+      myReviews: [],
+      favorites: [],
+      toReview: [],
       pending: [],
       accounts: [],
       detail: null,
@@ -180,6 +191,10 @@ export class Mainflix extends Component<Props, State> {
       const round: Serialized<RoundState> =
         await this.props.container.api.request('/rounds/current')
       this.setState({ round })
+      if (this.state.tab === 'week') {
+        const toReview: Film[] = await this.props.container.api.request('/movies/to-review')
+        this.setState({ toReview })
+      }
     } catch (error: unknown) {
       if (error instanceof ApiException && error.status === 401) this.clearSession()
       else this.setState({ error: error instanceof ApiException ? error.code : 'genericError' })
@@ -239,10 +254,153 @@ export class Mainflix extends Component<Props, State> {
       this.setState({ browse: {}, browseLoading: {} }, () => this.loadDiscovery())
     })
   }
+  private profile(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    void this.perform(() =>
+      this.updateProfile({
+        name: String(data.get('name')),
+        username: String(data.get('username')),
+      }),
+    )
+  }
+  private async updateProfile(values: {
+    name?: string
+    username?: string
+    avatar?: string | null
+  }): Promise<void> {
+    const userId = this.state.user?.id
+    const user: User = await this.props.container.api.request('/auth/me', 'PATCH', values)
+    if (this.state.user?.id !== userId) return
+    this.setState((state) => ({
+      user,
+      message: 'profileSaved',
+      myReviews: state.myReviews.map((entry) => ({
+        ...entry,
+        reviews: entry.reviews.map((review) => ({
+          ...review,
+          name: user.name,
+          avatar: user.avatar,
+        })),
+      })),
+    }))
+    await this.refreshRound()
+  }
+  private uploadAvatar(event: ChangeEvent<HTMLInputElement>): void {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const userId = this.state.user?.id
+    void this.perform(async () => {
+      if (
+        !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
+        file.size > 5 * 1024 * 1024
+      )
+        throw new ApiException('invalidAvatar', 400)
+      let image: ImageBitmap
+      try {
+        image = await createImageBitmap(file)
+      } catch {
+        throw new ApiException('invalidAvatar', 400)
+      }
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = canvas.height = 128
+        const context = canvas.getContext('2d')
+        if (!context) throw new ApiException('invalidAvatar', 400)
+        const size = Math.min(image.width, image.height)
+        context.drawImage(
+          image,
+          (image.width - size) / 2,
+          (image.height - size) / 2,
+          size,
+          size,
+          0,
+          0,
+          128,
+          128,
+        )
+        const avatar = canvas.toDataURL('image/webp', 0.8)
+        if (!avatar.startsWith('data:image/webp;base64,') || avatar.length > 21869)
+          throw new ApiException('invalidAvatar', 400)
+        if (this.state.user?.id === userId) await this.updateProfile({ avatar })
+      } finally {
+        image.close()
+      }
+    })
+  }
+  private async loadProfile(): Promise<void> {
+    const userId = this.state.user?.id
+    await this.perform(async () => {
+      const [favorites, myReviews] = await Promise.all([
+        this.props.container.api.request<Film[]>('/movies/favorites?limit=30'),
+        this.props.container.api.request<Serialized<ReviewedMovie>[]>(
+          '/movies/reviews?mine=true&limit=30',
+        ),
+      ])
+      if (this.state.user?.id === userId) this.setState({ favorites, myReviews })
+    })
+  }
+  private async loadFavorites(): Promise<void> {
+    const userId = this.state.user?.id
+    await this.perform(async () => {
+      const rows: Film[] = await this.props.container.api.request(
+        `/movies/favorites?limit=30&offset=${this.state.favorites.length}`,
+      )
+      if (this.state.user?.id === userId)
+        this.setState((state) => ({ favorites: [...state.favorites, ...rows] }))
+    })
+  }
+  private async loadMyReviews(): Promise<void> {
+    const userId = this.state.user?.id
+    await this.perform(async () => {
+      const rows: Serialized<ReviewedMovie>[] = await this.props.container.api.request(
+        `/movies/reviews?mine=true&limit=30&offset=${this.state.myReviews.length}`,
+      )
+      if (this.state.user?.id === userId)
+        this.setState((state) => ({ myReviews: [...state.myReviews, ...rows] }))
+    })
+  }
+  private favorite(movie: Film, favorite: boolean): void {
+    const userId = this.state.user?.id
+    void this.perform(async () => {
+      await this.props.container.api.request(
+        `/movies/${movie.id}/favorite`,
+        favorite ? 'PUT' : 'DELETE',
+        {},
+      )
+      const favorites: Film[] = await this.props.container.api.request('/movies/favorites?limit=30')
+      if (this.state.user?.id !== userId) return
+      this.setState((state) => ({
+        favorites,
+        detail: state.detail?.movie.id === movie.id ? { ...state.detail, favorite } : state.detail,
+        message: favorite ? 'favoriteAdded' : 'favoriteRemoved',
+      }))
+    })
+  }
+  private favoriteTmdb(tmdbId: number): void {
+    const userId = this.state.user?.id
+    void this.perform(async () => {
+      const movie: Film = await this.props.container.api.request(
+        `/movies/favorites?language=${this.state.language}`,
+        'POST',
+        { tmdbId },
+      )
+      if (this.state.user?.id !== userId) return
+      this.setState((state) => ({
+        favorites: [movie, ...state.favorites.filter((entry) => entry.id !== movie.id)],
+        message: 'favoriteAdded',
+      }))
+      this.loadDiscovery()
+    })
+  }
   private navigate(tab: Tab): void {
+    this.profileMenu.current?.removeAttribute('open')
     this.setState({ tab, error: null, message: null })
+    if (tab === 'week') void this.refreshRound()
     if (tab === 'history') void this.loadHistory(false)
     if (tab === 'reviews') void this.loadReviews(false)
+    if (tab === 'profile') void this.loadProfile()
     if (tab === 'admin') void this.loadAdmin()
     if (tab === 'catalogue' || tab === 'week') void this.search(this.state.query)
   }
@@ -690,7 +848,15 @@ export class Mainflix extends Component<Props, State> {
         reviewed: state.reviewed.map((entry) =>
           entry.movie.id === id ? { ...entry, reviews: detail.reviews } : entry,
         ),
+        myReviews: [
+          {
+            movie: detail.movie,
+            reviews: detail.reviews.filter((review) => review.user_id === state.user?.id),
+          },
+          ...state.myReviews.filter((entry) => entry.movie.id !== id),
+        ],
       }))
+      if (this.state.tab === 'week') await this.refreshRound()
     })
   }
   private async loadHistory(more: boolean): Promise<void> {
@@ -814,6 +980,12 @@ export class Mainflix extends Component<Props, State> {
             {this.t('nominate')}
           </button>
         )}
+        <button
+          disabled={this.state.busy}
+          onClick={() => this.favorite(movie, this.state.tab !== 'profile')}
+        >
+          {this.t(this.state.tab === 'profile' ? 'removeFavorite' : 'addFavorite')}
+        </button>
       </article>
     )
   }
@@ -831,6 +1003,9 @@ export class Mainflix extends Component<Props, State> {
           }
         >
           {this.t(canNominate ? 'nominate' : 'import')}
+        </button>
+        <button disabled={this.state.busy} onClick={() => this.favoriteTmdb(movie.tmdb_id)}>
+          {this.t('addFavorite')}
         </button>
       </article>
     )
@@ -1069,6 +1244,7 @@ export class Mainflix extends Component<Props, State> {
   private renderWeek(): ReactNode {
     const round: Serialized<RoundState> | null = this.state.round
     if (!round) return <p>{this.t('loading')}</p>
+    const toReview = this.state.toReview.filter((movie) => movie.id !== round.winner_id)
     return (
       <>
         {this.renderWelcome()}
@@ -1086,7 +1262,7 @@ export class Mainflix extends Component<Props, State> {
               return (
                 <div className={`participant ${response ? 'done' : ''}`} key={member.id}>
                   <span className={`avatar avatar-${index % 4}`} aria-hidden="true">
-                    {member.username.slice(0, 1)}
+                    <img src={member.avatar ?? '/art/creeper-avatar.png'} alt="" />
                   </span>
                   <strong>{member.username}</strong>
                   <small>
@@ -1148,6 +1324,19 @@ export class Mainflix extends Component<Props, State> {
             </div>
           )}
         </section>
+        {toReview.length > 0 && (
+          <section aria-labelledby="to-review-title">
+            <h2 id="to-review-title">{this.t('toReview')}</h2>
+            <div className="movie-grid">
+              {toReview.map((movie) => (
+                <div className="to-review-card" key={movie.id}>
+                  {this.renderCard(movie)}
+                  <button onClick={() => this.openMovie(movie.id)}>{this.t('rateMovie')}</button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {this.renderSearch()}
         {this.renderDiscovery()}
       </>
@@ -1257,6 +1446,133 @@ export class Mainflix extends Component<Props, State> {
       </section>
     )
   }
+  private renderProfile(): ReactNode {
+    const user = this.state.user!
+    return (
+      <section className="profile-page">
+        <h1>{this.t('profile')}</h1>
+        <section className="profile-details">
+          <div className="profile-photo">
+            <img src={user.avatar ?? '/art/creeper-avatar.png'} alt={this.t('profilePhoto')} />
+            <label>
+              {this.t('profilePhoto')}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={this.state.busy}
+                onChange={this.uploadAvatar.bind(this)}
+              />
+            </label>
+            <small className="muted">{this.t('avatarHint')}</small>
+            {user.avatar && (
+              <button
+                disabled={this.state.busy}
+                onClick={() => {
+                  void this.perform(() => this.updateProfile({ avatar: null }))
+                }}
+              >
+                {this.t('removePhoto')}
+              </button>
+            )}
+          </div>
+          <form key={`${user.id}-${user.username}-${user.name}`} onSubmit={this.profile.bind(this)}>
+            <label>
+              {this.t('displayName')}
+              <input
+                name="name"
+                required
+                minLength={1}
+                maxLength={80}
+                defaultValue={user.name}
+                autoComplete="name"
+              />
+            </label>
+            <label>
+              {this.t('username')}
+              <input
+                name="username"
+                required
+                minLength={3}
+                maxLength={32}
+                pattern="[a-z0-9_]{3,32}"
+                defaultValue={user.username}
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+            </label>
+            <small className="muted">{this.t('usernameHint')}</small>
+            <button disabled={this.state.busy}>{this.t('saveProfile')}</button>
+          </form>
+        </section>
+        <section aria-labelledby="profile-reviews">
+          <h2 id="profile-reviews">{this.t('myReviews')}</h2>
+          {!this.state.myReviews.length && <p className="muted">{this.t('noReviews')}</p>}
+          {this.state.myReviews.map(({ movie, reviews }) => (
+            <section className="reviewed-movie" key={movie.id}>
+              <h3>{movie.title}</h3>
+              {reviews.map((review) => this.renderReview(review))}
+              <button onClick={() => this.openMovie(movie.id)}>{this.t('rateMovie')}</button>
+            </section>
+          ))}
+          {this.state.myReviews.length >= 30 && (
+            <button
+              disabled={this.state.busy}
+              onClick={() => {
+                void this.loadMyReviews()
+              }}
+            >
+              {this.t('more')}
+            </button>
+          )}
+        </section>
+        <section aria-labelledby="profile-favorites">
+          <h2 id="profile-favorites">{this.t('favorites')}</h2>
+          {!this.state.favorites.length && <p className="muted">{this.t('noFavorites')}</p>}
+          <div className="movie-grid">
+            {this.state.favorites.map((movie) => this.renderCard(movie))}
+          </div>
+          {this.state.favorites.length >= 30 && (
+            <button
+              disabled={this.state.busy}
+              onClick={() => {
+                void this.loadFavorites()
+              }}
+            >
+              {this.t('more')}
+            </button>
+          )}
+        </section>
+        <section className="password-settings">
+          <h2>{this.t('changePassword')}</h2>
+          <form onSubmit={this.password.bind(this)}>
+            <label>
+              {this.t('currentPassword')}
+              <input
+                name="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                required
+                maxLength={128}
+              />
+            </label>
+            <label>
+              {this.t('newPassword')}
+              <input
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                minLength={6}
+                maxLength={128}
+                required
+              />
+            </label>
+            <button disabled={this.state.busy}>{this.t('save')}</button>
+          </form>
+        </section>
+      </section>
+    )
+  }
   private renderAdmin(): ReactNode {
     if (!this.state.user?.is_admin) return this.renderWeek()
     return (
@@ -1287,7 +1603,10 @@ export class Mainflix extends Component<Props, State> {
   private renderReview(review: Serialized<Review>): ReactNode {
     return (
       <article className="review" key={review.user_id}>
-        <strong>{review.name}</strong>
+        <strong className="review-author">
+          <img className="review-avatar" src={review.avatar ?? '/art/creeper-avatar.png'} alt="" />
+          {review.name}
+        </strong>
         <span role="img" aria-label={`${review.rating}/5`}>
           {[1, 2, 3, 4, 5].map((n) => (
             <span className="rating-diamond" key={n} aria-hidden="true">
@@ -1331,6 +1650,13 @@ export class Mainflix extends Component<Props, State> {
             {this.t('watched')}
           </button>
         )}
+        <button
+          disabled={this.state.busy}
+          onClick={() => this.favorite(movie, !detail.favorite)}
+          aria-pressed={detail.favorite}
+        >
+          {this.t(detail.favorite ? 'removeFavorite' : 'addFavorite')}
+        </button>
         <h3>{this.t('reviews')}</h3>
         {reviews.length ? (
           reviews.map((review) => this.renderReview(review))
@@ -1517,12 +1843,43 @@ export class Mainflix extends Component<Props, State> {
             <option value="es">Español</option>
           </select>
           {this.state.user && (
-            <button onClick={this.logout.bind(this)} disabled={this.state.busy}>
-              {this.t('logout')}
-            </button>
+            <details
+              className="profile-menu"
+              ref={this.profileMenu}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget))
+                  event.currentTarget.removeAttribute('open')
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  event.currentTarget.removeAttribute('open')
+                  event.currentTarget.querySelector('summary')?.focus()
+                }
+              }}
+            >
+              <summary
+                aria-label={this.t('profileMenu')}
+                aria-current={this.state.tab === 'profile' ? 'page' : undefined}
+              >
+                <img
+                  src={this.state.user.avatar ?? '/art/creeper-avatar.png'}
+                  alt=""
+                  width="44"
+                  height="44"
+                />
+              </summary>
+              <div className="profile-menu-panel">
+                <button onClick={() => this.navigate('profile')}>{this.t('goToProfile')}</button>
+                <button onClick={this.logout.bind(this)} disabled={this.state.busy}>
+                  {this.t('logout')}
+                </button>
+              </div>
+            </details>
           )}
         </header>
         <main
+          onPointerDown={() => this.profileMenu.current?.removeAttribute('open')}
           className={
             this.state.user && this.state.tab === 'week' && !this.state.resetToken
               ? 'week-page'
@@ -1557,36 +1914,11 @@ export class Mainflix extends Component<Props, State> {
                 this.renderHistory()
               ) : this.state.tab === 'reviews' ? (
                 this.renderReviews()
+              ) : this.state.tab === 'profile' ? (
+                this.renderProfile()
               ) : (
                 this.renderAdmin()
               )}
-              <details className="password-settings">
-                <summary>{this.t('changePassword')}</summary>
-                <form onSubmit={this.password.bind(this)}>
-                  <label>
-                    {this.t('currentPassword')}
-                    <input
-                      name="currentPassword"
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                      maxLength={128}
-                    />
-                  </label>
-                  <label>
-                    {this.t('newPassword')}
-                    <input
-                      name="password"
-                      type="password"
-                      autoComplete="new-password"
-                      minLength={6}
-                      maxLength={128}
-                      required
-                    />
-                  </label>
-                  <button disabled={this.state.busy}>{this.t('save')}</button>
-                </form>
-              </details>
             </>
           )}
         </main>

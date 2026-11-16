@@ -5,13 +5,34 @@ import { Mainflix } from '../src/app.js'
 import { I18n } from '../src/i18n.js'
 import type { Container } from '../src/container.js'
 
+test('profile navigation uses an avatar dropdown and the creeper is the default picture', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'profile',
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
+  }
+  const markup = renderToStaticMarkup(app.render())
+  const header = markup.slice(markup.indexOf('<header'), markup.indexOf('</header>'))
+  assert.match(header, /<details[^>]*class="profile-menu"/)
+  assert.match(header, /<summary[^>]*aria-label="Profile menu"/)
+  assert.match(header, /src="\/art\/creeper-avatar.png"/)
+  assert.match(header, /Go to my profile/)
+  assert.doesNotMatch(header, />My profile</)
+  assert.match(markup, /<img[^>]*src="\/art\/creeper-avatar.png"[^>]*alt="Profile photo"/)
+  app.state.user!.avatar = 'data:image/webp;base64,test'
+  assert.match(renderToStaticMarkup(app.render()), /src="data:image\/webp;base64,test"/)
+})
+
 test('random nomination offers filters and confirmation only while a player can nominate', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
   app.state = {
     ...app.state,
     loading: false,
-    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false },
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
     round: {
       week: '2026-11-09',
       status: 'collecting',
@@ -65,7 +86,7 @@ test('discovery features requested films and puts favorite genres before other b
     ...app.state,
     loading: false,
     tab: 'catalogue',
-    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false },
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
     browse: {
       featured: {
         local: [],
@@ -130,7 +151,7 @@ test('movie search explains missing TMDB configuration separately from an outage
     ...app.state,
     loading: false,
     tab: 'catalogue',
-    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false },
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
     search: { local: [], remote: [], remoteError: 'TMDB_NOT_CONFIGURED' },
   }
   for (const language of ['en', 'es'] as const) {
@@ -149,7 +170,14 @@ test('weekly party progress counts actual responses including skips without inve
   app.state = {
     ...app.state,
     loading: false,
-    user: { id: 1, name: 'Leo', email: 'leo@example.com', username: 'leo', is_admin: false },
+    user: {
+      id: 1,
+      name: 'Leo',
+      email: 'leo@example.com',
+      username: 'leo',
+      is_admin: false,
+      avatar: null,
+    },
     round: {
       week: '2026-11-09',
       winner_id: null,
@@ -240,7 +268,14 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
     ...app.state,
     loading: false,
     spinning: true,
-    user: { id: 1, name: 'Leo', email: 'leo@example.com', username: 'leo', is_admin: false },
+    user: {
+      id: 1,
+      name: 'Leo',
+      email: 'leo@example.com',
+      username: 'leo',
+      is_admin: false,
+      avatar: null,
+    },
     round: {
       week: '2026-11-09',
       winner_id: 2,

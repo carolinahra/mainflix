@@ -145,6 +145,59 @@ header > button {
   font-size: 0.8rem;
   white-space: nowrap;
 }
+.profile-menu {
+  position: relative;
+  flex: 0 0 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.profile-menu > summary {
+  display: block;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid #676c75;
+  overflow: hidden;
+  cursor: pointer;
+  list-style: none;
+  padding: 0;
+}
+.profile-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.profile-menu[open] > summary,
+.profile-menu > summary[aria-current] {
+  border-color: var(--green);
+}
+.profile-menu > summary img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transform: scale(1.08);
+}
+.profile-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 190px;
+  max-width: calc(100vw - 2rem);
+  padding: 0.4rem;
+  background: #1b1e24;
+  border: 1px solid #454850;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px #0008;
+  z-index: 3;
+}
+.profile-menu-panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+}
 main {
   max-width: 1600px;
   padding: 2rem 3vw 4rem;
@@ -675,12 +728,68 @@ dialog h2 {
 dialog small {
   color: var(--muted);
 }
+.profile-page > section {
+  margin: 2rem 0;
+}
+.profile-details {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 540px);
+  gap: 2rem;
+}
+.profile-photo {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+.profile-photo > img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.review-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: middle;
+}
+.review-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.review-avatar {
+  flex: 0 0 28px;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+@media (max-width: 760px) {
+  .profile-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  nav {
+    flex-wrap: wrap;
+  }
+}
 .reviewed-movie {
   padding: 1.25rem;
   margin: 1.5rem 0;
   border: 1px solid #454850;
   border-radius: 14px;
   background: #1b1e24;
+}
+.to-review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
 }
 .reviewed-movie-heading {
   display: flex;
@@ -925,8 +1034,13 @@ footer a {
 @media (max-width: 1100px) {
   header {
     gap: 1rem;
+    flex-wrap: wrap;
+  }
+  header > select {
+    margin-left: 0;
   }
   .brand {
+    margin-right: auto;
     font-size: 1.4rem;
   }
   .brand img {
@@ -935,6 +1049,9 @@ footer a {
   }
   nav {
     gap: 0;
+    order: 4;
+    flex-basis: 100%;
+    justify-content: space-between;
   }
   nav button {
     padding-inline: 0.6rem;
