@@ -84,6 +84,7 @@ export interface MovieBrowse extends MovieSearch {
   totalPages: number
 }
 export interface RoundRow {
+  survey_enabled: boolean
   week: string
   winner_id: number | null
   drawn_by: number | null
@@ -109,6 +110,30 @@ export interface RoundState extends RoundRow {
   responses: RoundResponse[]
   members: Member[]
 }
+export interface SurveyAnswer {
+  movieId: number
+  userIds: number[] | null
+}
+export type SurveyAction = SurveyAnswer | { finish: true } | { skip: true }
+export interface SurveyQuestion {
+  movieId: number
+  title: string
+  answered: boolean
+  userIds: number[] | null
+  options: { userId: number; percentage: number; votes: number }[] | null
+  answerCount: number | null
+}
+export interface RoundSurvey {
+  eligible: boolean
+  completed: boolean
+  participants: (Member & { completed: boolean })[]
+  questions: SurveyQuestion[]
+}
+export interface RoundView extends RoundState {
+  revealed: boolean
+  nominations: { movieId: number; title: string; count: number }[]
+  survey: RoundSurvey | null
+}
 export interface HistoryEntry {
   week: string
   drawn_at: Date | null
@@ -133,10 +158,12 @@ export interface Watched {
 export interface MovieReviews {
   reviews: Review[]
   watched: Watched[]
+  reviewsLocked: boolean
 }
 export interface ReviewedMovie {
   movie: Movie
   reviews: Review[]
+  reviewsLocked: boolean
 }
 export type Serialized<T> = T extends Date
   ? string

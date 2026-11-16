@@ -1,8 +1,10 @@
-import type { Generated, GeneratedAlways, ColumnType, Selectable } from 'kysely'
+import type { Generated, GeneratedAlways, ColumnType, Selectable, JSONColumnType } from 'kysely'
+import type { SurveyAnswer } from '../../models/entities.js'
 import type { ApprovalStatus } from '../../models/entities.js'
 type Timestamp = ColumnType<Date, Date | undefined, Date>
 
 interface RoundTableDef {
+  survey_enabled: Generated<boolean>
   started_at: Generated<Date | null>
   group_id: Generated<number>
   week_start: string
@@ -24,4 +26,13 @@ interface ResponseTableDef {
 export type ResponseTuple = Selectable<ResponseTableDef>
 export interface ResponseTable {
   round_responses: ResponseTableDef
+}
+export interface SurveyTable {
+  round_survey_responses: {
+    group_id: number
+    week_start: string
+    user_id: number
+    answers: JSONColumnType<SurveyAnswer[]>
+    completed_at: Date | null
+  }
 }

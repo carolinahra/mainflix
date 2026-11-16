@@ -9,6 +9,7 @@ export class Application {
   readonly app: Express = express()
   constructor(private readonly container: Container) {
     this.app.disable('x-powered-by')
+    this.app.set('json replacer', this.publicJson.bind(this))
     this.app.use(helmet())
     this.app.use(this.cache.bind(this))
     this.app.use(this.origin.bind(this))
@@ -24,6 +25,10 @@ export class Application {
     this.app.use('/api/admin', this.admin.bind(this))
     this.app.use(this.notFound.bind(this))
     this.app.use(this.error.bind(this))
+  }
+  private publicJson(key: string, value: unknown): unknown {
+    // Catalogue submitters can disclose the author of a freshly imported nomination.
+    return key === 'submitted_by' ? null : value
   }
   private cache(_req: HttpRequest, res: HttpResponse, next: NextFunction): void {
     res.set('Cache-Control', 'no-store')

@@ -78,16 +78,19 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 
 ## Rules
 
+- The **About Mainflix** tab explains groups, anonymous nominations, the draw, the guessing survey, reviews and personal features in English and Spanish.
 - Weeks run Monday 00:00 through the next Monday 00:00 in **Europe/Madrid**, including daylight-saving changes.
 - Each eligible group member nominates one approved, eligible movie or explicitly skips. Responses can change until every eligible member has responded, then lock. Group owners also vote; the original administrator remains an observer in the migrated group.
 - Everyone skipping closes the round without a winner. Incomplete/undrawn rounds expire at Monday midnight. There is no automatic draw.
-- Every nomination is one entry. Repeated nominations weight that movie proportionally.
+- Every nomination is one entry. Repeated nominations weight that movie proportionally. Nominations are anonymous: you can see your own pick and who has responded, but other members’ movie choices remain hidden until the guessing survey ends. Public movie payloads omit submitter identity to avoid identifying newly imported nominations.
 - Any member can draw. Short database transactions serialize group operations: concurrent clicks return the same saved winner. The roulette only presents that result.
+- After the draw animation, eligible members see a guessing survey with one question per nominated movie. Select one or more avatar cards and click **Send** to see percentages, then click **Next** to advance. You can skip a question or the entire survey. Percentages are the share of non-skipped answers selecting each name, so multiple names can total more than 100%. Each answer is final. **Finish** opens a results-only overview of every movie, with no question controls. When all members eligible at draw time finish or skip, actual nominators are highlighted beside the predictions. Observers and later joiners do not block the reveal. Pending surveys remain accessible through History after Monday; older rounds drawn before this feature do not require a survey.
 - Winning excludes the movie from later draws immediately. Personal watched progress is independent. Only the group owner can restore eligibility; saved winners never change.
 - Losing nominations do not carry over, but their movies stay in the catalogue.
 - TMDB imports and manual additions are immediately eligible for nomination. Manual additions are the fallback for films missing from TMDB. Existing rejected/excluded films stay blocked; group owners can still manage metadata and eligibility or resolve older pending entries.
 - Each user can mark any approved catalogue movie personally watched, including movies seen before Mainflix; doing so does not remove eligibility. One editable review per user/movie, 0.5–5 diamonds in half-point steps and optional text. Viewing progress is required to review, and survives reselection. The Reviews tab groups everyone’s diamond ratings and text by movie, with recently reviewed movies first.
 - The home page’s **To be reviewed** section keeps past weekly selections visible until every voting member in that group has rated them. Observer ratings do not count toward completion; the current weekly movie keeps its existing card.
+- Friends’ ratings and review text for weekly selections stay hidden in movie details and the Reviews tab until you submit your own rating for that movie. Marking it watched alone does not unlock reviews. This also applies to past selections and observers; non-selected catalogue movies keep shared reviews.
 - Old rounds/reviews persist. No cron task is needed: the API determines the current round from server time on each request; the frontend refreshes every five seconds while visible.
 
 ## Personal profiles and favorites
@@ -133,18 +136,20 @@ All routes except health, login, reset, logout, invitation preview and invitatio
 | PUT | `/api/auth/password` | `{currentPassword,password}`; revokes sessions |
 | POST | `/api/auth/reset` | `{token,password}`; revokes sessions |
 | GET | `/api/rounds/current` | Current round, responses, members and winner |
+| GET | `/api/rounds/:week` | That week’s round and saved survey progress, including previous weeks |
+| POST | `/api/rounds/:week/survey` | `{movieId,userIds:number[]\|null}` sends or skips one question; `{finish:true}` completes answered survey; `{skip:true}` skips remaining questions and completes |
 | GET | `/api/rounds?limit=30&offset=0` | Round history |
 | PUT | `/api/rounds/:week/response` | `{movieId:number}`, `{movieId:null}` to skip, or `{tmdbId:number}` to import and nominate atomically; optional `language=es` |
 | POST | `/api/rounds/:week/draw` | Saved shared result; `week` is `YYYY-MM-DD` |
 | GET | `/api/movies?q=title&language=es&limit=30&offset=0` | `{local,remote,remoteError}` |
 | GET | `/api/movies/to-review` | Selected weekly movies still missing a voting member’s review, most recent selection first |
-| GET | `/api/movies/reviews?limit=30&offset=0` | Reviewed movies, newest review first; each includes all member reviews; `mine=true` returns only your reviews |
+| GET | `/api/movies/reviews?limit=30&offset=0` | Reviewed movies, newest review first; weekly selections return `reviews: []` and `reviewsLocked: true` until you review them; `mine=true` returns only your reviews |
 | GET | `/api/movies/favorites?limit=30&offset=0` | Your favorite local movies |
 | POST | `/api/movies/favorites?language=es` | `{tmdbId}` imports and favorites atomically |
 | PUT / DELETE | `/api/movies/:id/favorite` | Add/remove your favorite; empty body |
 | GET | `/api/movies/browse?category=horror&language=es&page=1` | `{local,remote,remoteError,page,totalPages}`; categories: `featured`, `romanticComedy`, `horror`, `comedy`, `recentlyAdded`, `newReleases`, `popular`, `action`, `scienceFiction`, `drama`, `thriller`, `animation`, `adventure`, `fantasy`, `romance`, `barbie`; pages 1–500; optional inclusive `yearFrom`/`yearTo` filters for TMDB discovery |
 | POST | `/api/movies?language=es` | `{tmdbId}` or `{title,releaseYear?}` → approved movie |
-| GET | `/api/movies/:id` | Movie, personal watched records and reviews |
+| GET | `/api/movies/:id` | Movie, personal watched records and reviews; weekly selections return `reviews: []` and `reviewsLocked: true` until you review them |
 | PUT | `/api/movies/:id/watched` | `{}` → mark your viewing progress |
 | PUT | `/api/movies/:id/review` | `{rating,text?}` → create/edit your review |
 | GET | `/api/admin/movies/pending` | Pending movies; supports limit/offset |
@@ -154,6 +159,8 @@ All routes except health, login, reset, logout, invitation preview and invitatio
 | POST | `/api/admin/users/:id/reset` | Private recovery URL + expiry |
 
 Pagination defaults to 30, maximum 100. Reviews are plain text, maximum 10000 characters. Unknown body properties are rejected. Local search continues to work when TMDB is unavailable.
+
+Apply `007_anonymous_nominations_survey.sql` with the existing `npm run db:migrate` before running this version. It adds survey storage and preserves all accounts, nominations, winners and reviews. Already drawn rounds remain revealed without a retroactive survey. No hosted database is migrated automatically.
 
 ## Verification
 

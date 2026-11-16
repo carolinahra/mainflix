@@ -7,7 +7,11 @@ import type {
   RateLimitTable,
 } from '../shared/database-models/user.database-model.js'
 import type { MovieTable } from '../shared/database-models/movie.database-model.js'
-import type { RoundTable, ResponseTable } from '../shared/database-models/round.database-model.js'
+import type {
+  RoundTable,
+  ResponseTable,
+  SurveyTable,
+} from '../shared/database-models/round.database-model.js'
 import type { WatchedTable, ReviewTable } from '../shared/database-models/review.database-model.js'
 export type Schema = GroupTable &
   UserTable &
@@ -17,6 +21,7 @@ export type Schema = GroupTable &
   MovieTable &
   RoundTable &
   ResponseTable &
+  SurveyTable &
   WatchedTable &
   ReviewTable & {
     schema_migrations: { version: number; applied_at: Generated<Date> }

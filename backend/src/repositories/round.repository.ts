@@ -1,7 +1,13 @@
 import { sql } from 'kysely'
 import type { Database } from './database.js'
 import type { Connection } from './schema.js'
-import type { RoundRow, RoundResponse, Member, HistoryEntry } from '../models/entities.js'
+import type {
+  RoundRow,
+  RoundResponse,
+  Member,
+  HistoryEntry,
+  SurveyAnswer,
+} from '../models/entities.js'
 
 export class RoundRepository {
   constructor(
@@ -47,6 +53,7 @@ export class RoundRepository {
     return db
       .selectFrom('rounds')
       .select([
+        'survey_enabled',
         sql<string>`week_start::text`.as('week'),
         'winner_id',
         'drawn_by',
@@ -126,6 +133,47 @@ export class RoundRepository {
       .set({ winner_id: winner, drawn_by: userId, drawn_at: at })
       .where('week_start', '=', week)
       .where('group_id', '=', this.groupId)
+      .execute()
+  }
+  async startSurvey(week: string, userIds: number[], db: Connection): Promise<void> {
+    if (!userIds.length) return
+    await db
+      .insertInto('round_survey_responses')
+      .values(
+        userIds.map((user_id) => ({
+          group_id: this.groupId,
+          week_start: week,
+          user_id,
+          answers: '[]',
+          completed_at: null,
+        })),
+      )
+      .onConflict((oc) => oc.columns(['group_id', 'week_start', 'user_id']).doNothing())
+      .execute()
+  }
+  async survey(week: string, db: Connection) {
+    return db
+      .selectFrom('round_survey_responses as s')
+      .innerJoin('users as u', 'u.id', 's.user_id')
+      .select(['s.user_id', 's.answers', 's.completed_at', 'u.username', 'u.name', 'u.avatar'])
+      .where('s.group_id', '=', this.groupId)
+      .where('s.week_start', '=', week)
+      .orderBy('s.user_id')
+      .execute()
+  }
+  async saveSurvey(
+    week: string,
+    userId: number,
+    answers: SurveyAnswer[],
+    completedAt: Date | null,
+    db: Connection,
+  ): Promise<void> {
+    await db
+      .updateTable('round_survey_responses')
+      .set({ answers: JSON.stringify(answers), completed_at: completedAt })
+      .where('group_id', '=', this.groupId)
+      .where('week_start', '=', week)
+      .where('user_id', '=', userId)
       .execute()
   }
   async hasSelected(movieId: number, db: Connection): Promise<boolean> {

@@ -35,6 +35,76 @@ class HttpFixture {
   }
 }
 
+test('weekly reviews stay hidden in details and shared lists until the viewer submits their own', async () => {
+  const f = new HttpFixture()
+  const app = f.container.application.app
+  const author = await f.container.userService.create(null, 'author', 'Author', 'abcdef')
+  const viewer = await f.container.userService.create(null, 'viewer', 'Viewer', 'abcdef', true)
+  const cookie = await f.login('viewer', 'abcdef')
+  const weekly = await TestDatabase.movie('Weekly selection')
+  const past = await TestDatabase.movie('Past weekly selection')
+  const ordinary = await TestDatabase.movie('Never selected')
+  for (const [week, movie] of [
+    ['2026-11-09', weekly],
+    ['2026-11-02', past],
+  ] as const)
+    await TestDatabase.pool.query(
+      'INSERT INTO rounds (week_start,winner_id,drawn_by,drawn_at) VALUES ($1,$2,$3,now())',
+      [week, movie.id, author.id],
+    )
+  for (const movie of [weekly, past, ordinary]) {
+    await f.container.reviewService.markWatched(author.id, movie.id)
+    await f.container.reviewService.save(author.id, movie.id, 4.5, 'A friend’s private opinion')
+  }
+  await TestDatabase.pool.query("UPDATE reviews SET updated_at = '2026-11-08T12:00Z'")
+  const get = (path: string) => request(app).get(`/api${path}`).set('Cookie', cookie).expect(200)
+  const detail = () => get(`/movies/${weekly.id}`)
+  for (const movie of [weekly, past]) {
+    const result = (await get(`/movies/${movie.id}`)).body
+    assert.deepEqual(result.reviews, [])
+    assert.equal(result.reviewsLocked, true)
+  }
+  assert.equal((await get(`/movies/${ordinary.id}`)).body.reviews[0].rating, 4.5)
+  let shared = (await get('/movies/reviews?limit=1')).body[0]
+  assert.equal(shared.movie.id, ordinary.id)
+  assert.equal(shared.reviews[0].rating, 4.5)
+  shared = (await get('/movies/reviews?limit=1&offset=1')).body[0]
+  assert.equal(shared.movie.id, past.id)
+  assert.deepEqual(shared.reviews, [])
+  assert.equal(shared.reviewsLocked, true)
+  assert.deepEqual((await get('/movies/reviews?mine=true')).body, [])
+  assert.deepEqual((await get('/auth/reviews')).body, [])
+  await request(app)
+    .put(`/api/movies/${weekly.id}/watched`)
+    .set('Cookie', cookie)
+    .set('Origin', f.container.config.origin)
+    .send({})
+    .expect(204)
+  assert.deepEqual((await detail()).body.reviews, [])
+  await request(app)
+    .put(`/api/movies/${weekly.id}/review`)
+    .set('Cookie', cookie)
+    .set('Origin', f.container.config.origin)
+    .send({ rating: 0.5, text: '' })
+    .expect(204)
+  const unlocked = (await detail()).body
+  assert.equal(unlocked.reviewsLocked, false)
+  assert.deepEqual(
+    unlocked.reviews.map((review: { user_id: number }) => review.user_id),
+    [author.id, viewer.id],
+  )
+  shared = (await get('/movies/reviews?limit=1')).body[0]
+  assert.equal(shared.movie.id, weekly.id)
+  assert.equal(shared.reviewsLocked, false)
+  assert.equal(shared.reviews.length, 2)
+  assert.equal((await get(`/movies/${past.id}`)).body.reviewsLocked, true)
+  for (const path of ['/movies/reviews?mine=true', '/auth/reviews'])
+    assert.deepEqual(
+      (await get(path)).body[0].reviews.map((review: { user_id: number }) => review.user_id),
+      [viewer.id],
+    )
+})
+
 test('previous weekly selections stay to be reviewed until every voter rates them', async () => {
   const f = new HttpFixture()
   const app = f.container.application.app

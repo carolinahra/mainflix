@@ -9,7 +9,8 @@ import type {
   Movie,
   MovieSearch,
   MovieMetadata,
-  RoundState,
+  RoundView as RoundState,
+  SurveyAction,
   HistoryEntry,
   MovieReviews,
   MoviePatch,
@@ -21,7 +22,7 @@ import type {
 
 type Film = Serialized<Movie>
 type Detail = { movie: Film; favorite: boolean } & Serialized<MovieReviews>
-type Tab = 'week' | 'catalogue' | 'history' | 'reviews' | 'profile' | 'admin'
+type Tab = 'week' | 'catalogue' | 'history' | 'reviews' | 'profile' | 'admin' | 'about'
 interface Props {
   container: Container
 }
@@ -56,6 +57,9 @@ interface State {
   resetToken: string | null
   language: Language
   spinning: boolean
+  surveyRound: Serialized<RoundState> | null
+  surveyIndex: number
+  surveyDismissed: string | null
   randomOpen: boolean
   randomMovie: MovieMetadata | null
   randomLoading: boolean
@@ -69,6 +73,7 @@ export class Mainflix extends Component<Props, State> {
   private readonly dialog = createRef<HTMLDialogElement>()
   private readonly randomDialog = createRef<HTMLDialogElement>()
   private readonly roulette = createRef<HTMLDivElement>()
+  private readonly surveyDialog = createRef<HTMLDialogElement>()
   private poll: ReturnType<typeof setInterval> | undefined
   private debounce: ReturnType<typeof setTimeout> | undefined
   private errorTimer: ReturnType<typeof setTimeout> | undefined
@@ -107,6 +112,9 @@ export class Mainflix extends Component<Props, State> {
     resetToken: location.hash.startsWith('#reset=') ? location.hash.slice(7) : null,
     language: this.props.container.i18n.current,
     spinning: false,
+    surveyRound: null,
+    surveyIndex: 0,
+    surveyDismissed: null,
     randomOpen: false,
     randomMovie: null,
     randomLoading: false,
@@ -414,6 +422,7 @@ export class Mainflix extends Component<Props, State> {
     clearTimeout(this.errorTimer)
     this.dialog.current?.close()
     this.randomDialog.current?.close()
+    this.surveyDialog.current?.close()
     this.setState({
       user: null,
       error: null,
@@ -437,6 +446,9 @@ export class Mainflix extends Component<Props, State> {
       accounts: [],
       detail: null,
       spinning: false,
+      surveyRound: null,
+      surveyIndex: 0,
+      surveyDismissed: null,
       randomOpen: false,
       randomMovie: null,
       randomLoading: false,
@@ -489,18 +501,50 @@ export class Mainflix extends Component<Props, State> {
     }
   }
   private async refreshRound(): Promise<void> {
+    const previousRound = this.state.round
+    const previousSurvey = this.state.surveyRound
     try {
       const round: Serialized<RoundState> =
         await this.props.container.api.request('/rounds/current')
-      this.setState((state) => ({
-        round,
-        group: state.group
-          ? {
-              ...state.group,
-              can_vote: round.members.some((member) => member.id === state.user?.id),
-            }
-          : null,
-      }))
+      this.setState(
+        (state) => ({
+          round: state.round === previousRound ? round : state.round,
+          surveyRound:
+            state.surveyRound === previousSurvey && previousSurvey?.week === round.week
+              ? round
+              : state.surveyRound,
+          group: state.group
+            ? {
+                ...state.group,
+                can_vote: round.members.some((member) => member.id === state.user?.id),
+              }
+            : null,
+        }),
+        () => {
+          const current = this.state.round
+          if (
+            !previousSurvey &&
+            current?.survey?.eligible &&
+            !current.survey.completed &&
+            !this.state.surveyRound &&
+            this.state.surveyDismissed !== current.week &&
+            !this.state.spinning &&
+            !this.state.detail &&
+            !this.state.randomOpen &&
+            this.state.tab === 'week'
+          )
+            this.openSurvey(current)
+        },
+      )
+      const pendingSurvey = this.state.surveyRound
+      if (pendingSurvey && pendingSurvey.week !== round.week) {
+        const surveyRound = await this.props.container.api.request<Serialized<RoundState>>(
+          `/rounds/${pendingSurvey.week}`,
+        )
+        this.setState((state) => ({
+          surveyRound: state.surveyRound === pendingSurvey ? surveyRound : state.surveyRound,
+        }))
+      }
       if (this.state.tab === 'week') {
         const toReview: Film[] = await this.props.container.api.request('/movies/to-review')
         this.setState({ toReview })
@@ -1092,11 +1136,368 @@ export class Mainflix extends Component<Props, State> {
       })
       this.spinTimer = setTimeout(
         (): void => {
-          this.setState({ spinning: false })
+          this.setState({ spinning: false }, () => {
+            if (round.survey?.eligible && !round.survey.completed && !this.state.surveyRound)
+              this.openSurvey(round)
+          })
         },
         reducedMotion ? 0 : 4400,
       )
     })
+  }
+  private openSurvey(round: Serialized<RoundState>): void {
+    if (!round.survey) return
+    const unanswered = round.survey.questions.findIndex((question) => !question.answered)
+    this.setState(
+      {
+        surveyRound: round,
+        surveyIndex:
+          round.survey.completed || !round.survey.eligible
+            ? 0
+            : unanswered < 0
+              ? round.survey.questions.length - 1
+              : unanswered,
+      },
+      () => {
+        if (!this.surveyDialog.current?.open) this.surveyDialog.current?.showModal()
+      },
+    )
+  }
+  private closeSurvey(): void {
+    this.surveyDialog.current?.close()
+    this.setState({ surveyDismissed: this.state.surveyRound?.week ?? null, surveyRound: null })
+  }
+  private async saveSurvey(action: SurveyAction): Promise<void> {
+    const week = this.state.surveyRound?.week
+    if (!week) return
+    const result = await this.props.container.api.request<Serialized<RoundState>>(
+      `/rounds/${week}/survey`,
+      'POST',
+      action,
+    )
+    this.setState(
+      (state) => ({
+        surveyRound: state.surveyRound?.week === week ? result : state.surveyRound,
+        round: state.round?.week === week ? result : state.round,
+      }),
+      () => {
+        if (this.state.surveyRound?.week === week && ('finish' in action || 'skip' in action)) {
+          this.surveyDialog.current?.scrollTo({ top: 0 })
+          this.surveyDialog.current
+            ?.querySelector<HTMLElement>('#survey-title')
+            ?.focus({ preventScroll: true })
+        }
+      },
+    )
+  }
+  private sendSurvey(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const question = this.state.surveyRound?.survey?.questions[this.state.surveyIndex]
+    if (!question) return
+    const userIds = new FormData(event.currentTarget).getAll('userIds').map(Number)
+    void this.perform(() => this.saveSurvey({ movieId: question.movieId, userIds }))
+  }
+  private nextSurvey(): void {
+    const survey = this.state.surveyRound?.survey
+    if (!survey) return
+    if (this.state.surveyIndex < survey.questions.length - 1)
+      this.setState({ surveyIndex: this.state.surveyIndex + 1 }, () => {
+        this.surveyDialog.current?.querySelector<HTMLElement>('#survey-question')?.focus()
+      })
+    else if (survey.eligible && !survey.completed)
+      void this.perform(() => this.saveSurvey({ finish: true }))
+    else this.closeSurvey()
+  }
+  private renderReveal(round: Serialized<RoundState>): ReactNode {
+    if (!round.revealed) return null
+    return (
+      <section className="nomination-reveal" aria-label={this.t('nominationReveal')}>
+        <h3>{this.t('nominationReveal')}</h3>
+        <ul>
+          {round.responses.map((response) => (
+            <li key={response.user_id}>
+              <strong>
+                {round.members.find((member) => member.id === response.user_id)?.username ??
+                  response.name}
+              </strong>
+              {' · '}
+              {response.title ?? this.t('skipLabel')}
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+  private renderSurvey(): ReactNode {
+    const round = this.state.surveyRound
+    const survey = round?.survey
+    const question = survey?.questions[this.state.surveyIndex]
+    if (!round || !survey || !question) return null
+    const completed = survey.completed || !survey.eligible
+    const questions = completed ? survey.questions : [question]
+    const finished = survey.participants.filter((participant) => participant.completed).length
+    return (
+      <dialog
+        className="survey-dialog"
+        ref={this.surveyDialog}
+        aria-labelledby="survey-title"
+        onCancel={this.closeSurvey.bind(this)}
+      >
+        {this.renderErrorToast()}
+        <div className="survey-heading">
+          <button
+            className="close survey-close"
+            aria-label={`${this.t('close')} ×`}
+            onClick={this.closeSurvey.bind(this)}
+          >
+            ×
+          </button>
+          <div className="survey-kicker">
+            <span>{this.t('surveyEyebrow')}</span>
+            <span>{round.week}</span>
+          </div>
+          <h2 id="survey-title" tabIndex={-1}>
+            {this.t(completed ? 'surveyResults' : 'guessNominations')}
+          </h2>
+          {completed ? (
+            <>
+              <p className="survey-subtitle">{this.t('surveyResultsIntro')}</p>
+              <div className="survey-stats">
+                <div>
+                  <strong>{survey.questions.length}</strong>
+                  <span>{this.t('surveyMovies')}</span>
+                </div>
+                <div>
+                  <strong>{survey.participants.length}</strong>
+                  <span>{this.t('surveyPeople')}</span>
+                </div>
+                <div>
+                  <strong>
+                    {finished}/{survey.participants.length}
+                  </strong>
+                  <span>{this.t('surveyFinished')}</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="survey-step">
+                <span>
+                  {this.t('surveyQuestion')} <strong>{this.state.surveyIndex + 1}</strong> /{' '}
+                  {survey.questions.length}
+                </span>
+                <span>
+                  {finished}/{survey.participants.length} {this.t('surveyFinished')}
+                </span>
+              </div>
+              <progress
+                className="survey-step-progress"
+                aria-label={this.t('surveyProgress')}
+                value={this.state.surveyIndex + 1}
+                max={survey.questions.length}
+              />
+            </>
+          )}
+        </div>
+        <div
+          className={`survey-body${completed ? ' survey-overview' : ''}`}
+          key={completed ? 'overview' : question.movieId}
+        >
+          {completed && (
+            <p className={`survey-status${round.revealed ? ' is-revealed' : ''}`} role="status">
+              <span className="survey-status-icon" aria-hidden="true">
+                {round.revealed ? '✓' : '◷'}
+              </span>
+              <span>
+                {this.t(
+                  round.revealed
+                    ? 'surveyRevealed'
+                    : survey.completed
+                      ? 'surveyWaiting'
+                      : 'surveyPending',
+                )}
+              </span>
+            </p>
+          )}
+          {questions.map((item, index) => {
+            const headingId = completed ? `survey-result-${item.movieId}` : 'survey-question'
+            const results = completed || item.options !== null
+            return (
+              <section className="survey-movie-card" aria-labelledby={headingId} key={item.movieId}>
+                <div className="survey-movie-heading">
+                  <span className="survey-movie-number" aria-hidden="true">
+                    {String(completed ? index + 1 : this.state.surveyIndex + 1).padStart(2, '0')}
+                  </span>
+                  <div>
+                    <p>
+                      {completed
+                        ? `${this.t('surveyAnswers')} · ${item.answerCount ?? 0}`
+                        : this.t('whoNominated')}
+                    </p>
+                    <h3 id={headingId} tabIndex={-1}>
+                      {item.title}
+                    </h3>
+                  </div>
+                </div>
+                {results ? (
+                  <div className="survey-results" aria-live={completed ? 'off' : 'polite'}>
+                    {(item.options ?? []).map((option) => {
+                      const participant = survey.participants.find(
+                        (participant) => participant.id === option.userId,
+                      )
+                      const nominated =
+                        round.revealed &&
+                        round.responses.some(
+                          (response) =>
+                            response.movie_id === item.movieId &&
+                            response.user_id === option.userId,
+                        )
+                      const guessed = item.userIds?.includes(option.userId)
+                      return (
+                        <div
+                          className={`survey-result${nominated ? ' is-nominator' : ''}`}
+                          key={option.userId}
+                        >
+                          <img
+                            src={participant?.avatar ?? '/art/creeper-avatar.png'}
+                            alt=""
+                            width="36"
+                            height="36"
+                          />
+                          <div className="survey-result-copy">
+                            <div className="survey-result-label">
+                              <span>{participant?.username}</span>
+                              <strong>{option.percentage}%</strong>
+                            </div>
+                            <progress
+                              max="100"
+                              value={option.percentage}
+                              aria-label={`${participant?.username}: ${option.percentage}%`}
+                            />
+                            {(nominated || guessed) && (
+                              <div className="survey-result-tags">
+                                {nominated && (
+                                  <span className="survey-nominator">
+                                    {this.t('surveyNominated')}
+                                  </span>
+                                )}
+                                {guessed && <span>{this.t('surveyYourGuess')}</span>}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {!completed && (
+                      <>
+                        <p className="survey-note">
+                          {this.t('surveyAnswers')}: {item.answerCount ?? 0}.{' '}
+                          {this.t('surveyPercentHint')}
+                        </p>
+                        {item.answered && item.userIds === null && (
+                          <p className="survey-note">{this.t('surveyQuestionSkipped')}</p>
+                        )}
+                        <div className="survey-actions">
+                          <button
+                            className="primary"
+                            disabled={this.state.busy}
+                            onClick={this.nextSurvey.bind(this)}
+                          >
+                            {this.t(
+                              this.state.surveyIndex < survey.questions.length - 1
+                                ? 'surveyNext'
+                                : 'surveyFinish',
+                            )}
+                            <span aria-hidden="true">→</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <form key={`${round.week}-${item.movieId}`} onSubmit={this.sendSurvey.bind(this)}>
+                    <fieldset disabled={this.state.busy}>
+                      <legend>{this.t('selectNames')}</legend>
+                      <div className="survey-choices">
+                        {survey.participants.map((participant) => (
+                          <label className="survey-choice" key={participant.id}>
+                            <input type="checkbox" name="userIds" value={participant.id} />
+                            <img
+                              src={participant.avatar ?? '/art/creeper-avatar.png'}
+                              alt=""
+                              width="52"
+                              height="52"
+                            />
+                            <span>{participant.username}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <div className="survey-actions">
+                      <button className="primary" disabled={this.state.busy}>
+                        {this.t('surveySend')}
+                        <span aria-hidden="true">→</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={this.state.busy}
+                        onClick={() => {
+                          void this.perform(() =>
+                            this.saveSurvey({ movieId: item.movieId, userIds: null }),
+                          )
+                        }}
+                      >
+                        {this.t('surveySkipQuestion')}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            )
+          })}
+          {completed ? (
+            <>
+              <p className="survey-note">{this.t('surveyPercentHint')}</p>
+              <button className="survey-done" onClick={this.closeSurvey.bind(this)}>
+                {this.t('close')}
+              </button>
+            </>
+          ) : (
+            <button
+              className="survey-skip"
+              disabled={this.state.busy}
+              onClick={() => {
+                void this.perform(() => this.saveSurvey({ skip: true }))
+              }}
+            >
+              {this.t('surveySkip')}
+            </button>
+          )}
+        </div>
+      </dialog>
+    )
+  }
+  private renderAbout(): ReactNode {
+    return (
+      <section className="about-page" aria-labelledby="about-title">
+        <p className="eyebrow">{this.t('tagline')}</p>
+        <h1 id="about-title">{this.t('about')}</h1>
+        <p className="about-intro">{this.t('aboutIntro')}</p>
+        <ol className="about-steps">
+          {(['Groups', 'Nominate', 'Draw', 'Survey', 'Review'] as const).map((step) => (
+            <li key={step}>
+              <h2>{this.t(`about${step}Title`)}</h2>
+              <p>{this.t(`about${step}`)}</p>
+            </li>
+          ))}
+        </ol>
+        <section>
+          <h2>{this.t('aboutMoreTitle')}</h2>
+          <p>{this.t('aboutMore')}</p>
+        </section>
+        <p className="muted">{this.t('resetTime')}</p>
+      </section>
+    )
   }
   private submitMovie(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -1164,12 +1565,15 @@ export class Mainflix extends Component<Props, State> {
       this.setState((state) => ({
         detail,
         reviewed: state.reviewed.map((entry) =>
-          entry.movie.id === id ? { ...entry, reviews: detail.reviews } : entry,
+          entry.movie.id === id
+            ? { ...entry, reviews: detail.reviews, reviewsLocked: detail.reviewsLocked }
+            : entry,
         ),
         myReviews: [
           {
             movie: detail.movie,
             reviews: detail.reviews.filter((review) => review.user_id === state.user?.id),
+            reviewsLocked: false,
           },
           ...state.myReviews.filter((entry) => entry.movie.id !== id),
         ],
@@ -1491,7 +1895,12 @@ export class Mainflix extends Component<Props, State> {
     )
   }
   private renderRoulette(round: Serialized<RoundState>): ReactNode {
-    const entries = round.responses.filter((response) => response.movie_id !== null)
+    const entries = (round.nominations ?? []).flatMap((nomination) =>
+      Array.from({ length: nomination.count }, () => ({
+        movie_id: nomination.movieId,
+        title: nomination.title,
+      })),
+    )
     const winnerIndex = entries.findIndex((response) => response.movie_id === round.winner_id)
     if (!entries.length || winnerIndex < 0) return null
     const wedges = Array.from({ length: 8 }, (_, index) => entries[index % entries.length]!)
@@ -1586,7 +1995,11 @@ export class Mainflix extends Component<Props, State> {
                   </span>
                   <strong>{member.username}</strong>
                   <small>
-                    {response ? (response.title ?? this.t('skipLabel')) : this.t('waiting')}
+                    {response
+                      ? round.revealed || member.id === this.state.user?.id
+                        ? (response.title ?? this.t('skipLabel'))
+                        : this.t('anonymousResponse')
+                      : this.t('waiting')}
                   </small>
                 </div>
               )
@@ -1644,6 +2057,18 @@ export class Mainflix extends Component<Props, State> {
             </div>
           )}
         </section>
+        {round.survey && !this.state.spinning && (
+          <section className="survey-panel">
+            <h2>{this.t('guessNominations')}</h2>
+            <p>{this.t(round.revealed ? 'surveyRevealed' : 'surveyIntro')}</p>
+            <button onClick={() => this.openSurvey(round)}>
+              {this.t(
+                round.survey.eligible && !round.survey.completed ? 'surveyOpen' : 'surveyResults',
+              )}
+            </button>
+            {this.renderReveal(round)}
+          </section>
+        )}
         {toReview.length > 0 && (
           <section aria-labelledby="to-review-title">
             <h2 id="to-review-title">{this.t('toReview')}</h2>
@@ -1705,6 +2130,22 @@ export class Mainflix extends Component<Props, State> {
         {!this.state.history.length && <p>{this.t('emptyHistory')}</p>}
         {this.state.history.map((row) => (
           <article className="history-row" key={row.week}>
+            {row.winner && (
+              <button
+                disabled={this.state.busy}
+                onClick={() => {
+                  void this.perform(async () => {
+                    const round = await this.props.container.api.request<Serialized<RoundState>>(
+                      `/rounds/${row.week}`,
+                    )
+                    if (round.survey) this.openSurvey(round)
+                    else this.setState({ message: 'surveyUnavailable' })
+                  })
+                }}
+              >
+                {this.t('surveyOpen')}
+              </button>
+            )}
             <time>{row.week}</time>
             {row.winner ? (
               <button className="text-button" onClick={(): void => this.openMovie(row.winner!.id)}>
@@ -1735,7 +2176,7 @@ export class Mainflix extends Component<Props, State> {
         {!this.state.reviewed.length && (
           <p className="muted">{this.t(this.state.busy ? 'loading' : 'noReviews')}</p>
         )}
-        {this.state.reviewed.map(({ movie, reviews }) => (
+        {this.state.reviewed.map(({ movie, reviews, reviewsLocked }) => (
           <section
             className="reviewed-movie"
             key={movie.id}
@@ -1750,7 +2191,11 @@ export class Mainflix extends Component<Props, State> {
                 <button onClick={() => this.openMovie(movie.id)}>{this.t('rateMovie')}</button>
               </div>
             </div>
-            {reviews.map((review) => this.renderReview(review))}
+            {reviewsLocked ? (
+              <p className="muted">{this.t('reviewToSeeFriends')}</p>
+            ) : (
+              reviews.map((review) => this.renderReview(review))
+            )}
           </section>
         ))}
         {this.state.reviewed.length >= 30 && (
@@ -1978,7 +2423,9 @@ export class Mainflix extends Component<Props, State> {
           {this.t(detail.favorite ? 'removeFavorite' : 'addFavorite')}
         </button>
         <h3>{this.t('reviews')}</h3>
-        {reviews.length ? (
+        {detail.reviewsLocked ? (
+          <p className="muted">{this.t('reviewToSeeFriends')}</p>
+        ) : reviews.length ? (
           reviews.map((review) => this.renderReview(review))
         ) : (
           <p className="muted">{this.t('noReviews')}</p>
@@ -2134,13 +2581,19 @@ export class Mainflix extends Component<Props, State> {
             MAIN<span>FLIX</span>
           </a>
           {this.state.user && this.state.group && (
-            <nav aria-label="Mainflix">
+            <nav
+              aria-label="Mainflix"
+              onFocus={(event) =>
+                event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+              }
+            >
               {(
                 [
                   'week',
                   'catalogue',
                   'history',
                   'reviews',
+                  'about',
                   ...(this.canManage ? ['admin'] : []),
                 ] as Tab[]
               ).map((tab) => (
@@ -2212,7 +2665,10 @@ export class Mainflix extends Component<Props, State> {
               : undefined
           }
         >
-          {!this.state.detail && !this.state.randomOpen && this.renderErrorToast()}
+          {!this.state.detail &&
+            !this.state.randomOpen &&
+            !this.state.surveyRound &&
+            this.renderErrorToast()}
           {this.state.message && (
             <p className="notice" role="status">
               {this.t(this.state.message)}
@@ -2264,6 +2720,8 @@ export class Mainflix extends Component<Props, State> {
                 this.renderReviews()
               ) : this.state.tab === 'profile' ? (
                 this.renderProfile()
+              ) : this.state.tab === 'about' ? (
+                this.renderAbout()
               ) : (
                 this.renderAdmin()
               )}
@@ -2281,6 +2739,7 @@ export class Mainflix extends Component<Props, State> {
           {this.state.detail && this.renderErrorToast()}
           {this.renderDetail()}
         </dialog>
+        {this.renderSurvey()}
       </>
     )
   }

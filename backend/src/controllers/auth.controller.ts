@@ -30,7 +30,7 @@ export class AuthController {
   }
   private async reviewsByUser(req: HttpRequest, res: HttpResponse): Promise<void> {
     const { limit, offset } = Http.pagination.parse(req.query)
-    res.json(await this.reviews.all(limit, offset, Http.user(res).id))
+    res.json(await this.reviews.all(limit, offset, Http.user(res).id, true))
   }
   private async login(req: HttpRequest, res: HttpResponse): Promise<void> {
     const body = z

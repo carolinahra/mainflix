@@ -35,6 +35,7 @@ class BrowserFixture {
           '004_half_point_reviews.sql',
           '005_profiles_favorites.sql',
           '006_groups.sql',
+          '007_anonymous_nominations_survey.sql',
         ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )
@@ -583,7 +584,7 @@ test(
 
 test(
   'initial catalogue, expired admin session isolation, weighted shared draw, reviews, and Spanish UI',
-  { timeout: 90_000 },
+  { timeout: 120_000 },
   async () => {
     const f = new BrowserFixture()
     try {
@@ -676,6 +677,84 @@ test(
         winners.push((await winner.textContent())!)
       }
       assert.equal(new Set(winners).size, 1)
+      for (const [index, page] of pages.entries()) {
+        const survey = page.locator('.survey-dialog')
+        await survey.waitFor({ timeout: 10000 })
+        if (index === 0) {
+          assert.equal(await survey.getByRole('button', { name: 'Next', exact: true }).count(), 0)
+          await survey.getByRole('checkbox', { name: 'friend1', exact: true }).check()
+          await survey.getByRole('checkbox', { name: 'friend2', exact: true }).check()
+          await survey.getByRole('button', { name: 'Send', exact: true }).click()
+          await survey.getByRole('button', { name: 'Next', exact: true }).waitFor()
+          assert.equal(await survey.locator('h3').textContent(), 'Smoke Film A')
+          assert.equal(await survey.getByText('100%', { exact: true }).count(), 2)
+          await survey.screenshot({ path: '/tmp/mainflix-survey-desktop.png' })
+          for (const width of [375, 320]) {
+            await page.setViewportSize({ width, height: 667 })
+            assert.equal(
+              await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+              false,
+            )
+            assert.equal(
+              await survey.evaluate((element) => element.scrollWidth > element.clientWidth),
+              false,
+            )
+            await survey.screenshot({ path: `/tmp/mainflix-survey-${width}.png` })
+          }
+          await page.setViewportSize({ width: 1280, height: 900 })
+          await survey.getByRole('button', { name: 'Next', exact: true }).click()
+          await survey.getByRole('heading', { name: 'Smoke Film B', exact: true }).waitFor()
+          await survey.getByRole('button', { name: 'Skip question', exact: true }).click()
+          await survey.getByRole('button', { name: 'Finish', exact: true }).click()
+          await survey
+            .getByText('Your survey is complete. Waiting for everyone else to finish or skip.', {
+              exact: true,
+            })
+            .waitFor()
+        } else {
+          await survey.getByRole('button', { name: 'Skip survey', exact: true }).click()
+          await survey
+            .getByRole('button', { name: 'Skip survey', exact: true })
+            .waitFor({ state: 'hidden' })
+        }
+        await survey.getByRole('button', { name: 'Close ×', exact: true }).click()
+      }
+      await admin
+        .getByRole('heading', { name: 'Who nominated what', exact: true })
+        .waitFor({ timeout: 10000 })
+      const revealed = await (
+        await admin.request.get(`${f.container.config.origin}/api/rounds/current`)
+      ).json()
+      assert.equal(revealed.revealed, true)
+      assert.deepEqual(
+        revealed.responses.map((response: { title: string }) => response.title),
+        ['Smoke Film A', 'Smoke Film A', 'Smoke Film B', 'Smoke Film B'],
+      )
+      await pages[0]!.getByRole('button', { name: 'Survey results', exact: true }).click()
+      const reopenedSurvey = pages[0]!.locator('.survey-dialog')
+      await reopenedSurvey.getByRole('heading', { name: 'Smoke Film A', exact: true }).waitFor()
+      await reopenedSurvey.getByRole('heading', { name: 'Smoke Film B', exact: true }).waitFor()
+      assert.equal(
+        await reopenedSurvey.getByRole('button', { name: 'Next', exact: true }).count(),
+        0,
+      )
+      assert.equal(await reopenedSurvey.getByRole('checkbox').count(), 0)
+      assert.equal(
+        await reopenedSurvey.getByText('Nominated this movie', { exact: true }).count(),
+        4,
+      )
+      await reopenedSurvey.getByRole('button', { name: 'Close ×', exact: true }).click()
+      await pages[0]!.getByRole('button', { name: 'About Mainflix', exact: true }).click()
+      await pages[0]!.getByRole('heading', { name: 'About Mainflix', exact: true }).waitFor()
+      await pages[0]!.locator('main').screenshot({ path: '/tmp/mainflix-about-desktop.png' })
+      await pages[0]!.setViewportSize({ width: 320, height: 568 })
+      assert.equal(
+        await pages[0]!.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      )
+      await pages[0]!.screenshot({ path: '/tmp/mainflix-about-mobile.png', fullPage: true })
+      await pages[0]!.setViewportSize({ width: 1280, height: 900 })
+      await pages[0]!.getByRole('button', { name: 'This week', exact: true }).click()
       await admin.getByRole('button', { name: 'Replay roulette', exact: true }).click()
       await wheel.waitFor()
       await admin.locator('.winner .text-button').waitFor()
@@ -754,16 +833,20 @@ test(
       assert.equal(await admin.getByRole('radio', { name: '4.5/5', exact: true }).isChecked(), true)
       await pages[0]!.locator('.winner .text-button').click()
       await pages[0]!
-        .locator('.review')
-        .getByText('A great movie night.', { exact: true })
+        .getByText('Review this movie to see your friends’ reviews.', { exact: true })
         .waitFor()
-      assert.equal(await pages[0]!.locator('.review strong').textContent(), 'Admin')
+      assert.equal(await pages[0]!.locator('.review').count(), 0)
       await pages[0]!.getByRole('button', { name: "I've watched it", exact: true }).click()
+      assert.equal(await pages[0]!.locator('.review').count(), 0)
       await pages[0]!.getByRole('radio', { name: '3.5/5', exact: true }).check()
       await pages[0]!
         .getByLabel('Your review (optional)', { exact: true })
         .fill('Friend1 shared review.')
       await pages[0]!.getByRole('button', { name: 'Save review', exact: true }).click()
+      await pages[0]!
+        .locator('.review')
+        .getByText('A great movie night.', { exact: true })
+        .waitFor()
       await pages[0]!
         .locator('.review')
         .getByText('Friend1 shared review.', { exact: true })

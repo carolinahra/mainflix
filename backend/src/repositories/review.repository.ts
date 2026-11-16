@@ -67,7 +67,7 @@ export class ReviewRepository {
       )
       .execute()
   }
-  async list(movieId: number): Promise<MovieReviews> {
+  async list(movieId: number, userId: number): Promise<MovieReviews> {
     const reviews = await this.database.client
       .selectFrom('reviews as r')
       .innerJoin('users as u', 'u.id', 'r.user_id')
@@ -91,15 +91,28 @@ export class ReviewRepository {
       .where('w.movie_id', '=', movieId)
       .orderBy('w.user_id')
       .execute()
-    return { reviews, watched }
+    const reviewsLocked =
+      !reviews.some((review) => review.user_id === userId) &&
+      !!(await this.database.client
+        .selectFrom('rounds')
+        .select('winner_id')
+        .where('winner_id', '=', movieId)
+        .where('group_id', '=', this.groupId)
+        .executeTakeFirst())
+    return { reviews: reviewsLocked ? [] : reviews, watched, reviewsLocked }
   }
-  async all(limit: number, offset: number, userId?: number): Promise<ReviewedMovie[]> {
+  async all(limit: number, offset: number, userId: number, mine = false): Promise<ReviewedMovie[]> {
     const movies = await this.database.client
       .selectFrom('movies as m')
-      .$if(userId === undefined, (query) => query.where('m.group_id', '=', this.groupId))
+      .$if(!mine, (query) => query.where('m.group_id', '=', this.groupId))
       .innerJoin('reviews as r', 'r.movie_id', 'm.id')
       .selectAll('m')
-      .$if(userId !== undefined, (query) => query.where('r.user_id', '=', userId!))
+      .select((eb) =>
+        eb
+          .exists(eb.selectFrom('rounds').select('winner_id').whereRef('winner_id', '=', 'm.id'))
+          .as('weekly_selection'),
+      )
+      .$if(mine, (query) => query.where('r.user_id', '=', userId))
       .groupBy('m.id')
       .orderBy((eb) => eb.fn.max('r.updated_at'), 'desc')
       .orderBy('m.id', 'desc')
@@ -125,12 +138,14 @@ export class ReviewRepository {
         'in',
         movies.map((movie) => movie.id),
       )
-      .$if(userId !== undefined, (query) => query.where('r.user_id', '=', userId!))
+      .$if(mine, (query) => query.where('r.user_id', '=', userId))
       .orderBy('r.user_id')
       .execute()
-    return movies.map((movie) => ({
-      movie,
-      reviews: reviews.filter((review) => review.movie_id === movie.id),
-    }))
+    return movies.map(({ weekly_selection, ...movie }) => {
+      const movieReviews = reviews.filter((review) => review.movie_id === movie.id)
+      const reviewsLocked =
+        weekly_selection === true && !movieReviews.some((review) => review.user_id === userId)
+      return { movie, reviews: reviewsLocked ? [] : movieReviews, reviewsLocked }
+    })
   }
 }

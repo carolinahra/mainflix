@@ -27,6 +27,51 @@ test('profile navigation uses an avatar dropdown and the creeper is the default 
   assert.match(renderToStaticMarkup(app.render()), /src="data:image\/webp;base64,test"/)
 })
 
+test('locked weekly reviews show a translated prompt in the movie dialog and Reviews tab', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const container = { i18n: new I18n('en') }
+  const app = new Mainflix({ container: container as Container })
+  const movie = {
+    id: 1,
+    group_id: 1,
+    title: 'Weekly movie',
+    tmdb_id: null,
+    release_year: 2026,
+    overview: '',
+    poster_path: null,
+    approval_status: 'approved' as const,
+    submitted_by: null,
+    eligible: false,
+    eligibility_changed_by: null,
+    eligibility_changed_at: null,
+    created_at: '2026-11-09T12:00:00Z',
+  }
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'reviews',
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
+    reviewed: [{ movie, reviews: [], reviewsLocked: true }],
+    detail: { movie, reviews: [], watched: [], favorite: false, reviewsLocked: true },
+  }
+  for (const [language, prompt] of [
+    ['en', 'Review this movie to see your friends’ reviews.'],
+    ['es', 'Reseña esta película para ver las reseñas de tus amigos.'],
+  ] as const) {
+    container.i18n = new I18n(language)
+    const markup = renderToStaticMarkup(app.render())
+    assert.equal(markup.split(prompt).length - 1, 2)
+    assert.doesNotMatch(markup, /No reviews yet|Todavía no hay reseñas/)
+  }
+  app.state = {
+    ...app.state,
+    reviewed: [{ movie, reviews: [], reviewsLocked: false }],
+    detail: { ...app.state.detail!, reviewsLocked: false },
+  }
+  assert.doesNotMatch(renderToStaticMarkup(app.render()), /Reseña esta película para ver/)
+})
+
 test('random nomination offers filters and confirmation only while a player can nominate', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
@@ -305,6 +350,10 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
         { user_id: 3, name: 'Friend 3', movie_id: 2, title: 'Arrival' },
         { user_id: 4, name: 'Friend 4', movie_id: null, title: null },
       ],
+      nominations: [
+        { movieId: 1, title: 'Inception', count: 1 },
+        { movieId: 2, title: 'Arrival', count: 2 },
+      ],
     },
   }
   const markup = renderToStaticMarkup(app.render())
@@ -327,6 +376,7 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
     round: {
       ...app.state.round!,
       responses: [{ user_id: 2, name: 'Friend 2', movie_id: 2, title: 'Arrival' }],
+      nominations: [{ movieId: 2, title: 'Arrival', count: 1 }],
     },
   }
   const solo = renderToStaticMarkup(app.render())
@@ -341,6 +391,7 @@ test('eight-wedge roulette repeats nominations, skips abstentions and points to 
       ...app.state.round!,
       winner: { ...winner, title: 'The Grand Budapest Hotel' },
       responses: [{ user_id: 2, name: 'Friend 2', movie_id: 2, title: 'The Grand Budapest Hotel' }],
+      nominations: [{ movieId: 2, title: 'The Grand Budapest Hotel', count: 1 }],
     },
   }
   const longTitle = renderToStaticMarkup(app.render())
@@ -477,4 +528,269 @@ test('group creation starts with a labeled plus circle and reveals the form only
   assert.match(markup, /id="create-group-form"/)
   assert.match(markup, /Group name/)
   assert.match(markup, />Create group</)
+})
+
+test('survey uses multiple names, Send, percentages and explicit Next navigation', async (context) => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const participants = [1, 2, 3].map((id) => ({
+    id,
+    username: `friend${id}`,
+    name: `Friend ${id}`,
+    avatar: null,
+    completed: false,
+  }))
+  const round = {
+    week: '2026-11-09',
+    survey_enabled: true,
+    status: 'selected' as const,
+    winner_id: 1,
+    winner: null,
+    drawn_at: '2026-11-09T12:00:00Z',
+    drawn_by: 1,
+    ends_at: '2026-11-16T00:00:00Z',
+    responses: [],
+    members: participants,
+    revealed: false,
+    nominations: [
+      { movieId: 1, title: 'Arrival', count: 2 },
+      { movieId: 2, title: 'Dune', count: 1 },
+    ],
+    survey: {
+      eligible: true,
+      completed: false,
+      participants,
+      questions: [
+        {
+          movieId: 1,
+          title: 'Arrival',
+          answered: false,
+          userIds: null,
+          options: null,
+          answerCount: null,
+        },
+        {
+          movieId: 2,
+          title: 'Dune',
+          answered: false,
+          userIds: null,
+          options: null,
+          answerCount: null,
+        },
+      ],
+    },
+  }
+  const response = {
+    ...round,
+    survey: {
+      ...round.survey,
+      questions: [
+        {
+          ...round.survey.questions[0]!,
+          answered: true,
+          userIds: [1, 2],
+          answerCount: 2,
+          options: [
+            { userId: 1, percentage: 50, votes: 1 },
+            { userId: 2, percentage: 100, votes: 2 },
+            { userId: 3, percentage: 0, votes: 0 },
+          ],
+        },
+        round.survey.questions[1]!,
+      ],
+    },
+  }
+  const app = new Mainflix({
+    container: {
+      i18n: new I18n('en'),
+      api: { request: async () => response },
+    } as unknown as Container,
+  })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'week',
+    user: {
+      id: 1,
+      name: 'Friend 1',
+      username: 'friend1',
+      email: null,
+      avatar: null,
+      is_admin: false,
+    },
+    group: { id: 1, name: 'Friends', is_owner: false, can_vote: true },
+    round,
+    surveyRound: round,
+    surveyIndex: 0,
+  }
+  context.mock.method(app, 'setState', (update: object | ((state: typeof app.state) => object)) => {
+    app.state = { ...app.state, ...(typeof update === 'function' ? update(app.state) : update) }
+  })
+  let markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /aria-labelledby="survey-title"/)
+  assert.equal((markup.match(/type="checkbox"/g) ?? []).length, 3)
+  assert.match(markup, />Send</)
+  assert.doesNotMatch(markup, />Next</)
+  await app['saveSurvey']({ movieId: 1, userIds: [1, 2] })
+  assert.equal(app.state.surveyIndex, 0)
+  markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /50%/)
+  assert.match(markup, /100%/)
+  assert.match(markup, />Next</)
+  app['nextSurvey']()
+  assert.equal(app.state.surveyIndex, 1)
+  markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /<h3[^>]*>Dune<\/h3>/)
+  assert.match(markup, />Send</)
+
+  await context.test('a delayed Send response cannot reopen a closed survey', async (child) => {
+    app.state = { ...app.state, tab: 'profile', round: response, surveyRound: response }
+    let deliver!: (value: typeof response) => void
+    child.mock.method(
+      app.props.container.api,
+      'request',
+      () =>
+        new Promise((resolve) => {
+          deliver = resolve
+        }),
+    )
+    const pending = app['saveSurvey']({ movieId: 2, userIds: [1] })
+    app['closeSurvey']()
+    deliver(response)
+    await pending
+    assert.equal(app.state.surveyRound, null)
+  })
+  await context.test(
+    'a poll cannot overwrite an answer submitted while it was pending',
+    async (child) => {
+      app.state = { ...app.state, tab: 'profile', round, surveyRound: round }
+      let deliver!: (value: typeof round) => void
+      child.mock.method(
+        app.props.container.api,
+        'request',
+        () =>
+          new Promise((resolve) => {
+            deliver = resolve
+          }),
+      )
+      const pending = app['refreshRound']()
+      app.state = { ...app.state, round: response, surveyRound: response }
+      deliver(round)
+      await pending
+      assert.equal(app.state.round, response)
+      assert.equal(app.state.surveyRound, response)
+    },
+  )
+  await context.test(
+    'a delayed historical refresh cannot restore a closed survey',
+    async (child) => {
+      const previous = { ...response, week: '2026-11-02' }
+      app.state = { ...app.state, tab: 'profile', round: response, surveyRound: previous }
+      let deliver!: (value: typeof response) => void
+      child.mock.method(app.props.container.api, 'request', async (path: string) => {
+        if (path === '/rounds/current') return response
+        return new Promise((resolve) => {
+          deliver = resolve
+        })
+      })
+      const pending = app['refreshRound']()
+      await Promise.resolve()
+      await Promise.resolve()
+      app['closeSurvey']()
+      deliver(previous)
+      await pending
+      assert.equal(app.state.surveyRound, null)
+    },
+  )
+  await context.test('completed survey results reopen at the first question', () => {
+    const completed = {
+      ...response,
+      survey: {
+        ...response.survey,
+        completed: true,
+        questions: response.survey.questions.map((question) => ({ ...question, answered: true })),
+      },
+    }
+    app['openSurvey'](completed)
+    assert.equal(app.state.surveyIndex, 0)
+  })
+  await context.test(
+    'Finish shows all results without question controls while nominations stay hidden',
+    async (child) => {
+      const finished = {
+        ...response,
+        survey: {
+          ...response.survey,
+          completed: true,
+          questions: [
+            response.survey.questions[0]!,
+            {
+              ...response.survey.questions[1]!,
+              answered: true,
+              userIds: [3],
+              answerCount: 1,
+              options: [
+                { userId: 1, percentage: 0, votes: 0 },
+                { userId: 2, percentage: 0, votes: 0 },
+                { userId: 3, percentage: 100, votes: 1 },
+              ],
+            },
+          ],
+        },
+      }
+      child.mock.method(app.props.container.api, 'request', async () => finished)
+      app.state = { ...app.state, surveyRound: response, surveyIndex: 1 }
+      await app['saveSurvey']({ finish: true })
+      let results = renderToStaticMarkup(app['renderSurvey']())
+      assert.match(results, /Survey results/)
+      assert.match(results, /Arrival/)
+      assert.match(results, /Dune/)
+      assert.match(results, /50%/)
+      assert.match(results, /100%/)
+      assert.match(results, /Waiting for everyone else/)
+      assert.doesNotMatch(
+        results,
+        /type="checkbox"|>Send<|>Next<|>Finish<|Who do you think nominated/,
+      )
+      assert.doesNotMatch(results, /Nominated this movie/)
+      app.state = {
+        ...app.state,
+        surveyRound: {
+          ...finished,
+          revealed: true,
+          responses: [
+            { user_id: 1, name: 'Friend 1', movie_id: 1, title: 'Arrival' },
+            { user_id: 2, name: 'Friend 2', movie_id: 1, title: 'Arrival' },
+            { user_id: 3, name: 'Friend 3', movie_id: 2, title: 'Dune' },
+          ],
+        },
+      }
+      results = renderToStaticMarkup(app['renderSurvey']())
+      assert.equal((results.match(/Nominated this movie/g) ?? []).length, 3)
+      assert.doesNotMatch(results, /Waiting for everyone else/)
+      assert.doesNotMatch(results, /type="checkbox"|>Send<|>Next<|>Finish</)
+    },
+  )
+})
+
+test('About Mainflix explains the group, anonymous nomination, survey and review flow in both languages', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const container = { i18n: new I18n('en') }
+  const app = new Mainflix({ container: container as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'about',
+    group: { id: 1, name: 'Friends', is_owner: false, can_vote: true },
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
+  }
+  let markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /About Mainflix/)
+  assert.match(markup, /anonymous/)
+  assert.match(markup, /more chances/)
+  assert.match(markup, /Next/)
+  assert.match(markup, /review.*unlock/)
+  container.i18n = new I18n('es')
+  markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /Acerca de Mainflix/)
+  assert.match(markup, /anónim/)
 })

@@ -63,14 +63,14 @@ export class MovieController {
     const id: number = Http.id.parse(req.params.id)
     res.json({
       movie: await this.movies.find(id),
-      ...(await this.reviews.list(id)),
+      ...(await this.reviews.list(id, Http.user(res).id)),
       favorite: await this.movies.isFavorite(Http.user(res).id, id),
     })
   }
   private async reviewed(req: HttpRequest, res: HttpResponse): Promise<void> {
     const { limit, offset } = Http.pagination.parse(req.query)
     const mine = z.enum(['true', 'false']).optional().parse(req.query.mine) === 'true'
-    res.json(await this.reviews.all(limit, offset, mine ? Http.user(res).id : undefined))
+    res.json(await this.reviews.all(limit, offset, Http.user(res).id, mine))
   }
   private async toReview(_req: HttpRequest, res: HttpResponse): Promise<void> {
     res.json(await this.reviews.toReview())

@@ -25,12 +25,12 @@ export class ReviewService {
     if (!(await this.repository.isWatched(userId, movieId))) throw new MovieNotWatchedException()
     await this.repository.save(userId, movieId, rating, text, this.clock.now())
   }
-  async list(movieId: number): Promise<MovieReviews> {
+  async list(movieId: number, userId: number): Promise<MovieReviews> {
     if (!(await this.movies.find(movieId))) throw new MovieNotFoundException()
-    return this.repository.list(movieId)
+    return this.repository.list(movieId, userId)
   }
-  async all(limit: number, offset: number, userId?: number): Promise<ReviewedMovie[]> {
-    return this.repository.all(limit, offset, userId)
+  async all(limit: number, offset: number, userId: number, mine = false): Promise<ReviewedMovie[]> {
+    return this.repository.all(limit, offset, userId, mine)
   }
   async toReview(): Promise<Movie[]> {
     return this.repository.toReview(this.clock.weekKey())

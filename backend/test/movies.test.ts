@@ -178,7 +178,7 @@ test('reviews require personal viewing and are unique/editable per author, with 
   await reviews.save(friends[0]!.id, a.id, 3, 'Changed my mind')
   await assert.rejects(reviews.save(friends[1]!.id, a.id, 4, ''), { code: 'MOVIE_NOT_WATCHED' })
   await assert.rejects(reviews.save(friends[0]!.id, a.id, 6, ''), { code: 'INVALID_REVIEW' })
-  const detail = await reviews.list(a.id)
+  const detail = await reviews.list(a.id, friends[0]!.id)
   assert.equal(detail.reviews.length, 1)
   assert.equal(detail.reviews[0]!.rating, 3)
   assert.equal(detail.watched.length, 1)
@@ -231,7 +231,7 @@ test('reviews persist half-point ratings and reject values outside the half-poin
   await reviews.markWatched(user!.id, movie.id)
   for (const rating of [0.5, 3.5, 5]) {
     await reviews.save(user!.id, movie.id, rating, 'Diamond review')
-    assert.equal((await reviews.list(movie.id)).reviews[0]!.rating, rating)
+    assert.equal((await reviews.list(movie.id, user!.id)).reviews[0]!.rating, rating)
   }
   for (const rating of [0, 0.25, 3.7, 5.5, NaN, Infinity])
     await assert.rejects(reviews.save(user!.id, movie.id, rating, ''), { code: 'INVALID_REVIEW' })
