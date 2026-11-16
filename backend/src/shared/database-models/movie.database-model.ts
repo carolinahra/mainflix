@@ -19,4 +19,9 @@ interface MovieTableDef {
 export type MovieTuple = Selectable<MovieTableDef>
 export interface MovieTable {
   movies: MovieTableDef
+  favorite_movies: {
+    user_id: number
+    movie_id: number
+    created_at: Timestamp
+  }
 }

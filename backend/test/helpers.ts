@@ -34,6 +34,7 @@ export class TestDatabase {
           '002_usernames.sql',
           '003_optional_email.sql',
           '004_half_point_reviews.sql',
+          '005_profiles_favorites.sql',
         ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )
@@ -42,7 +43,7 @@ export class TestDatabase {
   static async users(): Promise<User[]> {
     return (
       await this.pool.query<User>(`INSERT INTO users (email,username,password_hash,name,is_admin)
-      SELECT 'friend' || n || '@example.com','friend' || n,'unused','Friend ' || n,false FROM generate_series(1,4) n RETURNING id,email,username,name,is_admin`)
+      SELECT 'friend' || n || '@example.com','friend' || n,'unused','Friend ' || n,false FROM generate_series(1,4) n RETURNING id,email,username,name,is_admin,avatar`)
     ).rows
   }
   static async movie(title: string = 'Movie', status: string = 'approved'): Promise<Movie> {

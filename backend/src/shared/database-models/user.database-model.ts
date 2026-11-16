@@ -9,6 +9,7 @@ interface UserTableDef {
   password_hash: string
   name: string
   is_admin: Generated<boolean>
+  avatar: Generated<string | null>
 }
 export type UserTuple = Selectable<UserTableDef>
 export interface UserTable {

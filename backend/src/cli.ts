@@ -67,6 +67,7 @@ export class Cli {
             '002_usernames.sql',
             '003_optional_email.sql',
             '004_half_point_reviews.sql',
+            '005_profiles_favorites.sql',
           ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
         ),
       )

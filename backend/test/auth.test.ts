@@ -44,6 +44,39 @@ test('provided emails remain validated, normalized, and unique', async () => {
   })
 })
 
+test('profile migration preserves existing accounts, sessions and review ratings', async () => {
+  const { auth, user } = await TestDatabase.auth()
+  const session = await auth.login(user.username, password)
+  const movie = await TestDatabase.movie('Preserved review')
+  await pool.query('INSERT INTO user_watched_movies (user_id,movie_id) VALUES ($1,$2)', [
+    user.id,
+    movie.id,
+  ])
+  await pool.query(
+    "INSERT INTO reviews (user_id,movie_id,rating,text) VALUES ($1,$2,3.5,'Preserved')",
+    [user.id, movie.id],
+  )
+  await pool.query('DROP TABLE favorite_movies')
+  await pool.query('ALTER TABLE users DROP COLUMN avatar')
+  await pool.query('DELETE FROM schema_migrations WHERE version=5')
+  const sources = await Promise.all(
+    [
+      '001_initial.sql',
+      '002_usernames.sql',
+      '003_optional_email.sql',
+      '004_half_point_reviews.sql',
+      '005_profiles_favorites.sql',
+    ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
+  )
+  await TestDatabase.database.migrate(sources)
+  await TestDatabase.database.migrate(sources)
+  assert.deepEqual(await auth.user(session.token), user)
+  assert.deepEqual(
+    (await pool.query('SELECT rating,text FROM reviews WHERE movie_id=$1', [movie.id])).rows,
+    [{ rating: 3.5, text: 'Preserved' }],
+  )
+})
+
 test('optional email migration preserves existing accounts and sessions and runs repeatedly', async () => {
   const { auth, user } = await TestDatabase.auth()
   const session = await auth.login('admin', password)
@@ -55,6 +88,7 @@ test('optional email migration preserves existing accounts and sessions and runs
       '002_usernames.sql',
       '003_optional_email.sql',
       '004_half_point_reviews.sql',
+      '005_profiles_favorites.sql',
     ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
   )
   await TestDatabase.database.migrate(sources)
@@ -111,6 +145,7 @@ test('username migration preserves existing accounts and can run repeatedly', as
       '002_usernames.sql',
       '003_optional_email.sql',
       '004_half_point_reviews.sql',
+      '005_profiles_favorites.sql',
     ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
   )
   await TestDatabase.database.migrate(sources)
