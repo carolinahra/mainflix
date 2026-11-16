@@ -75,7 +75,18 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 - Losing nominations do not carry over, but their movies stay in the catalogue.
 - TMDB imports and manual additions are immediately eligible for nomination. Manual additions are the fallback for films missing from TMDB. Existing rejected/excluded films stay blocked; admins can still manage metadata and eligibility or resolve older pending entries.
 - Each user can mark any approved catalogue movie personally watched, including movies seen before Mainflix; doing so does not remove eligibility. One editable review per user/movie, 0.5–5 diamonds in half-point steps and optional text. Viewing progress is required to review, and survives reselection. The Reviews tab groups everyone’s diamond ratings and text by movie, with recently reviewed movies first.
+- The home page’s **To be reviewed** section keeps past weekly selections visible until every voting member has rated them. Admin ratings do not count toward completion; the current weekly movie keeps its existing card.
 - Old rounds/reviews persist. No cron task is needed: the API determines the current round from server time on each request; the frontend refreshes every five seconds while visible.
+
+## Personal profiles and favorites
+
+The circular avatar menu opens **My profile**, which contains display name, unique login username, profile photo, personal reviews, private favorite movies, and password change. Renaming an account preserves its sessions, nominations and reviews; use the new username on the next login. Changing the password still signs out all sessions.
+
+Photos accept PNG/JPEG/WebP up to 5 MB in the browser, are center-cropped to a 128×128 WebP thumbnail, and stored in PostgreSQL (maximum 16 KiB encoded image data). Removing a photo restores the default creeper picture. No file-storage service is needed for the five-person group.
+
+Favorite movies can be added from local/TMDB cards or movie details and removed from details or My profile. A TMDB favorite imports metadata, but never nominates the film, marks it watched, or restores rejected/excluded eligibility. Favorites and personal reviews are scoped to the authenticated account.
+
+Apply migration `005_profiles_favorites.sql` with the existing `npm run db:migrate` command before deploying this version. It preserves existing accounts, sessions and reviews.
 
 ## Password recovery
 
@@ -97,6 +108,7 @@ All routes except health, login, reset, and logout require a session cookie. `/a
 |---|---|---|
 | GET | `/api/health` | Process health (does not check the DB) |
 | POST | `/api/auth/login` | `{identifier,password}` (username or email; legacy `{email,password}` also accepted) → user + cookie |
+| PATCH | `/api/auth/me` | Any nonempty subset of `{name,username,avatar}`; avatar is a bounded WebP data URL or `null` |
 | GET | `/api/auth/me` | Current user |
 | POST | `/api/auth/logout` | Revoke cookie session |
 | PUT | `/api/auth/password` | `{currentPassword,password}`; revokes sessions |
@@ -106,7 +118,11 @@ All routes except health, login, reset, and logout require a session cookie. `/a
 | PUT | `/api/rounds/:week/response` | `{movieId:number}`, `{movieId:null}` to skip, or `{tmdbId:number}` to import and nominate atomically; optional `language=es` |
 | POST | `/api/rounds/:week/draw` | Saved shared result; `week` is `YYYY-MM-DD` |
 | GET | `/api/movies?q=title&language=es&limit=30&offset=0` | `{local,remote,remoteError}` |
-| GET | `/api/movies/reviews?limit=30&offset=0` | Reviewed movies, newest review first; each includes all member reviews |
+| GET | `/api/movies/to-review` | Selected weekly movies still missing a voting member’s review, most recent selection first |
+| GET | `/api/movies/reviews?limit=30&offset=0` | Reviewed movies, newest review first; each includes all member reviews; `mine=true` returns only your reviews |
+| GET | `/api/movies/favorites?limit=30&offset=0` | Your favorite local movies |
+| POST | `/api/movies/favorites?language=es` | `{tmdbId}` imports and favorites atomically |
+| PUT / DELETE | `/api/movies/:id/favorite` | Add/remove your favorite; empty body |
 | GET | `/api/movies/browse?category=horror&language=es&page=1` | `{local,remote,remoteError,page,totalPages}`; categories: `featured`, `romanticComedy`, `horror`, `comedy`, `recentlyAdded`, `newReleases`, `popular`, `action`, `scienceFiction`, `drama`, `thriller`, `animation`, `adventure`, `fantasy`, `romance`, `barbie`; pages 1–500; optional inclusive `yearFrom`/`yearTo` filters for TMDB discovery |
 | POST | `/api/movies?language=es` | `{tmdbId}` or `{title,releaseYear?}` → approved movie |
 | GET | `/api/movies/:id` | Movie, personal watched records and reviews |
