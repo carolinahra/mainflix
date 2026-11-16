@@ -14,6 +14,7 @@ import type {
   Language,
   MovieCategory,
   MovieBrowse,
+  MovieWatchProviders,
 } from '../models/entities.js'
 import {
   AppException,
@@ -86,10 +87,28 @@ export class MovieService {
       return { local, remote: [], remoteError: error.code }
     }
   }
-  async find(id: number): Promise<Movie> {
+  async find(id: number, language?: Language): Promise<Movie> {
     const movie: Movie | undefined = await this.repository.find(id)
     if (!movie) throw new MovieNotFoundException()
+    if (language && movie.tmdb_id) {
+      try {
+        const metadata = await this.tmdb.details(movie.tmdb_id, language)
+        return { ...movie, overview: metadata.overview || movie.overview }
+      } catch (error: unknown) {
+        if (!(error instanceof AppException)) throw error
+      }
+    }
     return movie
+  }
+  async watchProviders(id: number): Promise<MovieWatchProviders | null> {
+    const movie = await this.find(id)
+    if (!movie.tmdb_id) return null
+    try {
+      return await this.tmdb.watchProviders(movie.tmdb_id)
+    } catch (error: unknown) {
+      if (!(error instanceof AppException)) throw error
+      return null
+    }
   }
   async pending(limit: number, offset: number): Promise<Movie[]> {
     return this.repository.pending(limit, offset)

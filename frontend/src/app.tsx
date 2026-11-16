@@ -18,6 +18,7 @@ import type {
   MovieBrowse,
   Review,
   ReviewedMovie,
+  MovieWatchProviders,
 } from '../../backend/src/models/entities.js'
 
 type Film = Serialized<Movie>
@@ -45,6 +46,7 @@ interface State {
   genre: MovieCategory
   query: string
   detail: Detail | null
+  watchProviders: Record<number, MovieWatchProviders | null>
   history: Serialized<HistoryEntry>[]
   reviewed: Serialized<ReviewedMovie>[]
   myReviews: Serialized<ReviewedMovie>[]
@@ -100,6 +102,7 @@ export class Mainflix extends Component<Props, State> {
     genre: 'action',
     query: '',
     detail: null,
+    watchProviders: {},
     history: [],
     reviewed: [],
     myReviews: [],
@@ -410,6 +413,26 @@ export class Mainflix extends Component<Props, State> {
     this.searchController?.abort()
     this.browseControllers.forEach((controller) => controller.abort())
   }
+  override componentDidUpdate(): void {
+    const movies = [this.state.round?.winner, this.state.detail?.movie]
+    for (const id of new Set(movies.filter((movie) => movie?.tmdb_id).map((movie) => movie!.id)))
+      void this.loadWatchProviders(id)
+  }
+  private async loadWatchProviders(id: number): Promise<void> {
+    // shortcut: availability is cached for this group session; add expiry if live updates are needed.
+    if (Object.hasOwn(this.state.watchProviders, id)) return
+    const groupId = this.state.group?.id
+    this.setState((state) => ({ watchProviders: { ...state.watchProviders, [id]: null } }))
+    try {
+      const providers = await this.props.container.api.request<MovieWatchProviders | null>(
+        `/movies/${id}/providers`,
+      )
+      if (this.state.group?.id === groupId)
+        this.setState((state) => ({ watchProviders: { ...state.watchProviders, [id]: providers } }))
+    } catch (error: unknown) {
+      if (error instanceof ApiException && error.status === 401) this.clearSession()
+    }
+  }
   private clearSession(): void {
     this.props.container.api.groupId = null
     this.profileMenu.current?.removeAttribute('open')
@@ -445,6 +468,7 @@ export class Mainflix extends Component<Props, State> {
       pending: [],
       accounts: [],
       detail: null,
+      watchProviders: {},
       spinning: false,
       surveyRound: null,
       surveyIndex: 0,
@@ -797,6 +821,7 @@ export class Mainflix extends Component<Props, State> {
     if (!this.state.user || !this.state.group) return
     const categories: MovieCategory[] = [
       'featured',
+      'christmas',
       'romanticComedy',
       'horror',
       'comedy',
@@ -1533,7 +1558,9 @@ export class Mainflix extends Component<Props, State> {
         const group = this.state.groups.find((group) => group.id === personalMovie.group_id)
         if (group) await this.selectGroup(group)
       }
-      const detail: Detail = await this.props.container.api.request(`/movies/${id}`)
+      const detail: Detail = await this.props.container.api.request(
+        `/movies/${id}?language=${this.state.language}`,
+      )
       this.setState({ detail }, (): void => {
         if (!this.dialog.current?.open) this.dialog.current?.showModal()
       })
@@ -1548,7 +1575,11 @@ export class Mainflix extends Component<Props, State> {
     if (!id) return
     void this.perform(async (): Promise<void> => {
       await this.props.container.api.request(`/movies/${id}/watched`, 'PUT', {})
-      this.setState({ detail: await this.props.container.api.request<Detail>(`/movies/${id}`) })
+      this.setState({
+        detail: await this.props.container.api.request<Detail>(
+          `/movies/${id}?language=${this.state.language}`,
+        ),
+      })
     })
   }
   private review(event: FormEvent<HTMLFormElement>): void {
@@ -1561,7 +1592,9 @@ export class Mainflix extends Component<Props, State> {
         rating: Number(data.get('rating')),
         text: data.get('text'),
       })
-      const detail = await this.props.container.api.request<Detail>(`/movies/${id}`)
+      const detail = await this.props.container.api.request<Detail>(
+        `/movies/${id}?language=${this.state.language}`,
+      )
       this.setState((state) => ({
         detail,
         reviewed: state.reviewed.map((entry) =>
@@ -1694,9 +1727,7 @@ export class Mainflix extends Component<Props, State> {
             {movie.title}
           </button>
         </h3>
-        <p className="muted">
-          {movie.release_year} · #{movie.id}
-        </p>
+        <p className="muted">{movie.release_year}</p>
         <span className="badge">{this.t(movie.approval_status)}</span>
         {!movie.eligible && <p className="muted">{this.t('excluded')}</p>}
         {canNominate && (
@@ -1977,6 +2008,7 @@ export class Mainflix extends Component<Props, State> {
     return (
       <>
         {this.renderWelcome()}
+        {this.renderBrowseRow('christmas')}
         {this.renderBrowseRow('popular')}
         <section className="party-panel" aria-label={this.t('party')}>
           <div className="party-heading">
@@ -2051,6 +2083,7 @@ export class Mainflix extends Component<Props, State> {
           {round.winner && !this.state.spinning && (
             <div className="winner" role="status">
               {this.renderCard(round.winner)}
+              {this.renderWatchProviders(round.winner.id)}
               <button disabled={this.state.busy} onClick={this.draw.bind(this)}>
                 {this.t('replayRoulette')}
               </button>
@@ -2389,6 +2422,44 @@ export class Mainflix extends Component<Props, State> {
       </article>
     )
   }
+  private renderWatchProviders(id: number): ReactNode {
+    const providers = this.state.watchProviders[id]
+    if (!providers || (!providers.flatrate.length && !providers.rent.length)) return null
+    return (
+      <section className="watch-providers" aria-label={this.t('availableAt')}>
+        <h3>{this.t('availableAt')}</h3>
+        {(['flatrate', 'rent'] as const).map(
+          (kind) =>
+            providers[kind].length > 0 && (
+              <div key={kind}>
+                <small className="muted">
+                  {this.t(kind === 'flatrate' ? 'subscription' : 'rental')}
+                </small>
+                <ul>
+                  {providers[kind].map((provider) => (
+                    <li key={provider.provider_id}>
+                      <img
+                        src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
+                        alt={provider.provider_name}
+                        title={provider.provider_name}
+                        width={40}
+                        height={40}
+                        loading="lazy"
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ),
+        )}
+        <small>
+          <a href={providers.link} target="_blank" rel="noopener noreferrer">
+            JustWatch
+          </a>
+        </small>
+      </section>
+    )
+  }
   private renderDetail(): ReactNode {
     const detail: Detail | null = this.state.detail
     if (!detail) return null
@@ -2403,10 +2474,9 @@ export class Mainflix extends Component<Props, State> {
         <h2>
           {movie.title} <small>{movie.release_year}</small>
         </h2>
-        <p className="muted">
-          {this.t('movieId')}: {movie.id} · {this.t(movie.approval_status)}
-        </p>
+        <p className="muted">{this.t(movie.approval_status)}</p>
         <p>{movie.overview}</p>
+        {this.renderWatchProviders(movie.id)}
         <p>
           {this.t('watchedBy')}: {watched.map((w) => w.name).join(', ') || '—'}
         </p>

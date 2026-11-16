@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import type { Language, MovieMetadata, MovieCategory } from '../models/entities.js'
+import type {
+  Language,
+  MovieMetadata,
+  MovieCategory,
+  MovieWatchProviders,
+} from '../models/entities.js'
 import { TmdbNotConfiguredException, TmdbUnavailableException } from '../shared/exceptions/index.js'
 export class Tmdb {
   private readonly metadataSchema = z.object({
@@ -69,6 +74,35 @@ export class Tmdb {
       throw new TmdbUnavailableException()
     }
   }
+  async watchProviders(id: number): Promise<MovieWatchProviders | null> {
+    const payload = await this.get(`movie/${id}/watch/providers`, 'es')
+    try {
+      const provider = z.object({
+        provider_id: z.number().int().positive(),
+        provider_name: z.string().min(1).max(300),
+        logo_path: z.string().regex(/^\/[A-Za-z0-9._-]+$/),
+      })
+      const { results } = z
+        .object({
+          results: z.object({
+            ES: z
+              .object({
+                link: z
+                  .string()
+                  .url()
+                  .regex(/^https:\/\/www\.themoviedb\.org\/movie\//),
+                flatrate: z.array(provider).default([]),
+                rent: z.array(provider).default([]),
+              })
+              .optional(),
+          }),
+        })
+        .parse(payload)
+      return results.ES ?? null
+    } catch {
+      throw new TmdbUnavailableException()
+    }
+  }
   async browse(
     category: Exclude<MovieCategory, 'recentlyAdded'>,
     language: Language,
@@ -103,6 +137,7 @@ export class Tmdb {
       page: String(page),
     })
     if (genres[category]) params.set('with_genres', genres[category])
+    if (category === 'christmas') params.set('with_keywords', '207317')
     if (yearFrom !== undefined) params.set('primary_release_date.gte', `${yearFrom}-01-01`)
     if (yearTo !== undefined) params.set('primary_release_date.lte', `${yearTo}-12-31`)
     if (category === 'newReleases') {

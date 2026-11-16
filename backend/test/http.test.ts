@@ -35,6 +35,79 @@ class HttpFixture {
   }
 }
 
+test('movie descriptions follow the requested language without overwriting the catalogue synopsis', async () => {
+  const f = new HttpFixture()
+  await f.container.userService.create(null, 'synopsis', 'Viewer', 'abcdef', true)
+  const movie = await TestDatabase.movie('Interstellar')
+  await TestDatabase.pool.query('UPDATE movies SET tmdb_id=157336,overview=$2 WHERE id=$1', [
+    movie.id,
+    'Stored synopsis',
+  ])
+  f.container.tmdb = new Tmdb('test', async (input) => {
+    const url = new URL(String(input))
+    assert.equal(url.pathname, '/3/movie/157336')
+    return Response.json({
+      id: 157336,
+      title: 'Interstellar',
+      overview:
+        url.searchParams.get('language') === 'es-ES'
+          ? 'Un equipo de exploradores viaja más allá de nuestra galaxia.'
+          : 'A team of explorers travels beyond our galaxy.',
+    })
+  })
+  const cookie = await f.login('synopsis', 'abcdef')
+  const detail = (language: string) =>
+    request(f.container.application.app)
+      .get(`/api/movies/${movie.id}?language=${language}`)
+      .set('Cookie', cookie)
+  assert.equal(
+    (await detail('es').expect(200)).body.movie.overview,
+    'Un equipo de exploradores viaja más allá de nuestra galaxia.',
+  )
+  assert.equal(
+    (await detail('en').expect(200)).body.movie.overview,
+    'A team of explorers travels beyond our galaxy.',
+  )
+  await detail('fr').expect(400)
+  f.container.tmdb = new Tmdb('')
+  assert.equal((await detail('es').expect(200)).body.movie.overview, 'Stored synopsis')
+  assert.equal((await f.container.movieService.find(movie.id)).overview, 'Stored synopsis')
+})
+
+test('movie availability keeps authentication and group scope and tolerates missing TMDB data', async () => {
+  const f = new HttpFixture()
+  const owner = await f.container.userService.create(null, 'platforms', 'Owner', 'abcdef', true)
+  const movie = await TestDatabase.movie('Spanish streaming movie')
+  const manual = await TestDatabase.movie('Manual movie')
+  await TestDatabase.pool.query('UPDATE movies SET tmdb_id=1 WHERE id=$1', [movie.id])
+  const providers = {
+    link: 'https://www.themoviedb.org/movie/1/watch?locale=ES',
+    flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/netflix.jpg' }],
+    rent: [],
+  }
+  let unavailable = false
+  f.container.tmdb = new Tmdb('test', async () => {
+    if (unavailable) return new Response('', { status: 503 })
+    return Response.json({ id: 1, results: { ES: providers } })
+  })
+  const app = f.container.application.app
+  await request(app).get(`/api/movies/${movie.id}/providers`).expect(401)
+  const cookie = await f.login('platforms', 'abcdef')
+  const get = (id: number) => request(app).get(`/api/movies/${id}/providers`).set('Cookie', cookie)
+  assert.deepEqual((await get(movie.id).expect(200)).body, providers)
+  assert.equal((await get(manual.id).expect(200)).body, null)
+  await get(99999).expect(404)
+  const group = await f.container.groupService.create(owner.id, 'Other group')
+  await request(app)
+    .get(`/api/movies/${movie.id}/providers`)
+    .set('Cookie', cookie)
+    .set('X-Mainflix-Group', String(group.id))
+    .expect(404)
+  unavailable = true
+  assert.equal((await get(movie.id).expect(200)).body, null)
+  await request(app).get(`/api/movies/${movie.id}`).set('Cookie', cookie).expect(200)
+})
+
 test('weekly reviews stay hidden in details and shared lists until the viewer submits their own', async () => {
   const f = new HttpFixture()
   const app = f.container.application.app

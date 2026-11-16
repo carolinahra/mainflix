@@ -5,6 +5,165 @@ import { Mainflix } from '../src/app.js'
 import { I18n } from '../src/i18n.js'
 import type { Container } from '../src/container.js'
 
+test('the weekly pick and movie dialog show subscription and rental icons with JustWatch credit', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const container = { i18n: new I18n('en') }
+  const app = new Mainflix({ container: container as Container })
+  const movie = {
+    id: 1,
+    group_id: 1,
+    title: 'Weekly movie',
+    tmdb_id: 1,
+    release_year: 2026,
+    overview: '',
+    poster_path: null,
+    approval_status: 'approved' as const,
+    submitted_by: null,
+    eligible: true,
+    eligibility_changed_by: null,
+    eligibility_changed_at: null,
+    created_at: '2026-11-09T12:00:00Z',
+  }
+  app.state = {
+    ...app.state,
+    loading: false,
+    group: { id: 1, name: 'Mainflix', is_owner: false, can_vote: true },
+    user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
+    round: {
+      week: '2026-11-09',
+      status: 'selected',
+      winner: movie,
+      winner_id: 1,
+      drawn_by: 1,
+      drawn_at: '2026-11-09T12:00:00Z',
+      ends_at: '2026-11-16T00:00:00Z',
+      responses: [],
+      members: [],
+    },
+    detail: { movie, reviews: [], watched: [], favorite: false, reviewsLocked: false },
+    browse: {
+      christmas: {
+        local: [],
+        remote: [
+          {
+            tmdb_id: 771,
+            title: 'Home Alone',
+            release_year: 1990,
+            overview: '',
+            poster_path: null,
+          },
+        ],
+        remoteError: null,
+        page: 1,
+        totalPages: 2,
+      },
+    },
+    watchProviders: {
+      1: {
+        link: 'https://www.themoviedb.org/movie/1/watch?locale=ES',
+        flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/netflix.jpg' }],
+        rent: [{ provider_id: 10, provider_name: 'Amazon Video', logo_path: '/amazon.jpg' }],
+      },
+    },
+  }
+  for (const [language, heading, subscription, rent] of [
+    ['en', 'Available at', 'Subscription', 'Rent'],
+    ['es', 'Disponible en', 'Suscripción', 'Alquiler'],
+  ] as const) {
+    container.i18n = new I18n(language)
+    const markup = renderToStaticMarkup(app.render())
+    assert.equal(markup.split(`<h3>${heading}</h3>`).length - 1, 2)
+    assert.doesNotMatch(markup, /Catalogue ID|ID del catálogo|· #1/)
+    assert.match(markup, /id="browse-christmas"/)
+    assert.ok(markup.includes(language === 'es' ? 'Películas de Navidad' : 'Christmas movies'))
+    assert.ok(markup.includes('Home Alone'))
+    assert.equal((markup.match(/alt="Netflix"/g) ?? []).length, 2)
+    assert.equal((markup.match(/alt="Amazon Video"/g) ?? []).length, 2)
+    assert.match(markup, /src="https:\/\/image.tmdb.org\/t\/p\/w92\/netflix.jpg"/)
+    assert.ok(markup.indexOf(subscription) < markup.indexOf('alt="Netflix"'))
+    assert.ok(markup.indexOf('alt="Netflix"') < markup.indexOf(rent))
+    assert.ok(markup.indexOf(rent) < markup.indexOf('alt="Amazon Video"'))
+    assert.match(
+      markup,
+      /href="https:\/\/www.themoviedb.org\/movie\/1\/watch\?locale=ES"[^>]*>JustWatch</,
+    )
+  }
+  app.state.watchProviders[1] = { ...app.state.watchProviders[1]!, flatrate: [], rent: [] }
+  assert.doesNotMatch(renderToStaticMarkup(app.render()), /Disponible en|JustWatch/)
+  app.state.watchProviders[1] = null
+  assert.doesNotMatch(renderToStaticMarkup(app.render()), /Disponible en|JustWatch/)
+})
+
+test('opening a movie requests its description in the selected interface language', async (context) => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({
+    container: {
+      i18n: new I18n('es'),
+      api: {
+        request: async (path: string) => {
+          assert.equal(path, '/movies/1?language=es')
+          return { movie: { id: 1, overview: 'Una descripción en español.' } }
+        },
+      },
+    } as unknown as Container,
+  })
+  let pending!: Promise<void>
+  context.mock.method(app, 'perform', (work: () => Promise<void>) => {
+    pending = work()
+    return pending
+  })
+  context.mock.method(app, 'setState', (update: object) => {
+    app.state = { ...app.state, ...update }
+  })
+  app['openMovie'](1)
+  await pending
+  assert.equal(app.state.detail?.movie.overview, 'Una descripción en español.')
+})
+
+test('availability loads once per movie and delayed results cannot cross group changes', async (context) => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const providers = {
+    link: 'https://www.themoviedb.org/movie/1/watch?locale=ES',
+    flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/netflix.jpg' }],
+    rent: [],
+  }
+  const app = new Mainflix({
+    container: {
+      i18n: new I18n('en'),
+      api: {
+        request: async (path: string) => {
+          assert.equal(path, '/movies/1/providers')
+          return providers
+        },
+      },
+    } as unknown as Container,
+  })
+  app.state.group = { id: 1, name: 'Mainflix', is_owner: false, can_vote: true }
+  context.mock.method(app, 'setState', (update: object | ((state: typeof app.state) => object)) => {
+    app.state = { ...app.state, ...(typeof update === 'function' ? update(app.state) : update) }
+  })
+  await app['loadWatchProviders'](1)
+  assert.deepEqual(app.state.watchProviders[1], providers)
+  context.mock.method(app.props.container.api, 'request', async () => {
+    assert.fail('cached movie should not fetch providers again')
+  })
+  await app['loadWatchProviders'](1)
+  let deliver!: (value: typeof providers) => void
+  context.mock.method(
+    app.props.container.api,
+    'request',
+    () =>
+      new Promise((resolve) => {
+        deliver = resolve
+      }),
+  )
+  const pending = app['loadWatchProviders'](2)
+  app.state = { ...app.state, group: { ...app.state.group!, id: 2 }, watchProviders: {} }
+  deliver(providers)
+  await pending
+  assert.deepEqual(app.state.watchProviders, {})
+})
+
 test('profile navigation uses an avatar dropdown and the creeper is the default picture', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })

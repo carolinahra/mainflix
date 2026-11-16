@@ -54,6 +54,16 @@ export interface MovieMetadata {
   overview: string
   poster_path: string | null
 }
+export interface WatchProvider {
+  provider_id: number
+  provider_name: string
+  logo_path: string
+}
+export interface MovieWatchProviders {
+  link: string
+  flatrate: WatchProvider[]
+  rent: WatchProvider[]
+}
 export type Language = 'en' | 'es'
 export interface MovieSearch {
   local: Movie[]
@@ -62,6 +72,7 @@ export interface MovieSearch {
 }
 export const movieCategories = [
   'featured',
+  'christmas',
   'romanticComedy',
   'horror',
   'comedy',

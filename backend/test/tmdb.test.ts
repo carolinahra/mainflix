@@ -4,6 +4,77 @@ import { Tmdb } from '../src/services/tmdb.js'
 
 const movie = { id: 1, title: 'A movie', release_date: '2026-11-06', poster_path: null }
 
+test('Christmas browsing uses the Christmas keyword with Spanish releases and pagination', async () => {
+  const tmdb = new Tmdb('test', async (input) => {
+    const url = new URL(String(input))
+    assert.equal(url.pathname, '/3/discover/movie')
+    assert.equal(url.searchParams.get('with_keywords'), '207317')
+    assert.equal(url.searchParams.get('region'), 'ES')
+    assert.equal(url.searchParams.get('language'), 'es-ES')
+    assert.equal(url.searchParams.get('page'), '2')
+    return Response.json({ results: [movie], total_pages: 3 })
+  })
+  const result = await tmdb.browse('christmas', 'es', 2, new Date())
+  assert.equal(result.movies[0]?.title, 'A movie')
+  assert.equal(result.totalPages, 3)
+})
+
+test('watch providers return only Spanish subscriptions and rentals with platform logos', async () => {
+  const netflix = { provider_id: 8, provider_name: 'Netflix', logo_path: '/netflix.jpg' }
+  const amazon = { provider_id: 10, provider_name: 'Amazon Video', logo_path: '/amazon.jpg' }
+  const link = 'https://www.themoviedb.org/movie/1/watch?locale=ES'
+  const tmdb = new Tmdb('test', async (input) => {
+    assert.equal(new URL(String(input)).pathname, '/3/movie/1/watch/providers')
+    return Response.json({
+      id: 1,
+      results: {
+        ES: { link, flatrate: [netflix], rent: [amazon], buy: [amazon] },
+        US: { link: 'https://www.themoviedb.org/movie/1/watch?locale=US', flatrate: [amazon] },
+      },
+    })
+  })
+  assert.deepEqual(await tmdb.watchProviders(1), { link, flatrate: [netflix], rent: [amazon] })
+})
+
+test('missing Spanish availability does not fall back to another country', async () => {
+  const tmdb = new Tmdb('test', async () => Response.json({ id: 1, results: { US: {} } }))
+  assert.equal(await tmdb.watchProviders(1), null)
+  const rentals = new Tmdb('test', async () =>
+    Response.json({
+      results: { ES: { link: 'https://www.themoviedb.org/movie/1/watch?locale=ES' } },
+    }),
+  )
+  assert.deepEqual(await rentals.watchProviders(1), {
+    link: 'https://www.themoviedb.org/movie/1/watch?locale=ES',
+    flatrate: [],
+    rent: [],
+  })
+})
+
+test('watch providers reject unsafe logos, links, malformed payloads and upstream errors', async () => {
+  for (const payload of [
+    {},
+    { results: { ES: { link: 'javascript:alert(1)' } } },
+    {
+      results: {
+        ES: {
+          link: 'https://www.themoviedb.org/movie/1/watch?locale=ES',
+          flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '//other.test/logo' }],
+        },
+      },
+    },
+  ]) {
+    const tmdb = new Tmdb('test', async () => Response.json(payload))
+    await assert.rejects(tmdb.watchProviders(1), { code: 'TMDB_UNAVAILABLE' })
+  }
+  await assert.rejects(
+    new Tmdb('test', async () => new Response('', { status: 503 })).watchProviders(1),
+    {
+      code: 'TMDB_UNAVAILABLE',
+    },
+  )
+})
+
 test('year filters use an inclusive primary release year range', async () => {
   for (const [from, to] of [
     [2014, 2014],

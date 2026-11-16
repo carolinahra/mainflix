@@ -18,6 +18,7 @@ export class MovieController {
     this.router.get('/favorites', this.favorites.bind(this))
     this.router.post('/favorites', this.favoriteTmdb.bind(this))
     this.router.get('/:id', this.detail.bind(this))
+    this.router.get('/:id/providers', this.watchProviders.bind(this))
     this.router.put('/:id/watched', this.watched.bind(this))
     this.router.put('/:id/review', this.review.bind(this))
     this.router.put('/:id/favorite', this.favorite.bind(this))
@@ -62,10 +63,13 @@ export class MovieController {
   private async detail(req: HttpRequest, res: HttpResponse): Promise<void> {
     const id: number = Http.id.parse(req.params.id)
     res.json({
-      movie: await this.movies.find(id),
+      movie: await this.movies.find(id, Http.language(req)),
       ...(await this.reviews.list(id, Http.user(res).id)),
       favorite: await this.movies.isFavorite(Http.user(res).id, id),
     })
+  }
+  private async watchProviders(req: HttpRequest, res: HttpResponse): Promise<void> {
+    res.json(await this.movies.watchProviders(Http.id.parse(req.params.id)))
   }
   private async reviewed(req: HttpRequest, res: HttpResponse): Promise<void> {
     const { limit, offset } = Http.pagination.parse(req.query)
