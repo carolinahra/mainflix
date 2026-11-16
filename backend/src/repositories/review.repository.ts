@@ -1,7 +1,36 @@
 import type { Database } from './database.js'
-import type { MovieReviews, ReviewedMovie } from '../models/entities.js'
+import type { Movie, MovieReviews, ReviewedMovie } from '../models/entities.js'
 export class ReviewRepository {
   constructor(private readonly database: Database) {}
+  async toReview(): Promise<Movie[]> {
+    return this.database.client
+      .selectFrom('movies as m')
+      .innerJoin('rounds as round', 'round.winner_id', 'm.id')
+      .selectAll('m')
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('users as member')
+            .select('member.id')
+            .where('member.is_admin', '=', false)
+            .where((member) =>
+              member.not(
+                member.exists(
+                  member
+                    .selectFrom('reviews as review')
+                    .select('review.user_id')
+                    .whereRef('review.user_id', '=', 'member.id')
+                    .whereRef('review.movie_id', '=', 'm.id'),
+                ),
+              ),
+            ),
+        ),
+      )
+      .groupBy('m.id')
+      .orderBy((eb) => eb.fn.max('round.week_start'), 'desc')
+      .orderBy('m.id', 'desc')
+      .execute()
+  }
   async markWatched(userId: number, movieId: number): Promise<void> {
     await this.database.client
       .insertInto('user_watched_movies')
@@ -40,6 +69,7 @@ export class ReviewRepository {
         'r.user_id',
         'r.movie_id',
         'u.name',
+        'u.avatar',
         'r.rating',
         'r.text',
         'r.created_at',
@@ -51,17 +81,18 @@ export class ReviewRepository {
     const watched = await this.database.client
       .selectFrom('user_watched_movies as w')
       .innerJoin('users as u', 'u.id', 'w.user_id')
-      .select(['w.user_id', 'u.name', 'w.watched_at'])
+      .select(['w.user_id', 'u.name', 'u.avatar', 'w.watched_at'])
       .where('w.movie_id', '=', movieId)
       .orderBy('w.user_id')
       .execute()
     return { reviews, watched }
   }
-  async all(limit: number, offset: number): Promise<ReviewedMovie[]> {
+  async all(limit: number, offset: number, userId?: number): Promise<ReviewedMovie[]> {
     const movies = await this.database.client
       .selectFrom('movies as m')
       .innerJoin('reviews as r', 'r.movie_id', 'm.id')
       .selectAll('m')
+      .$if(userId !== undefined, (query) => query.where('r.user_id', '=', userId!))
       .groupBy('m.id')
       .orderBy((eb) => eb.fn.max('r.updated_at'), 'desc')
       .orderBy('m.id', 'desc')
@@ -76,6 +107,7 @@ export class ReviewRepository {
         'r.user_id',
         'r.movie_id',
         'u.name',
+        'u.avatar',
         'r.rating',
         'r.text',
         'r.created_at',
@@ -86,6 +118,7 @@ export class ReviewRepository {
         'in',
         movies.map((movie) => movie.id),
       )
+      .$if(userId !== undefined, (query) => query.where('r.user_id', '=', userId!))
       .orderBy('r.user_id')
       .execute()
     return movies.map((movie) => ({

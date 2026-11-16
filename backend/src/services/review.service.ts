@@ -28,7 +28,10 @@ export class ReviewService {
     if (!(await this.movies.find(movieId))) throw new MovieNotFoundException()
     return this.repository.list(movieId)
   }
-  async all(limit: number, offset: number): Promise<ReviewedMovie[]> {
-    return this.repository.all(limit, offset)
+  async all(limit: number, offset: number, userId?: number): Promise<ReviewedMovie[]> {
+    return this.repository.all(limit, offset, userId)
+  }
+  async toReview(): Promise<Movie[]> {
+    return this.repository.toReview()
   }
 }

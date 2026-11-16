@@ -13,6 +13,7 @@ import {
   InvalidCredentialsException,
   UserNotFoundException,
   InvalidResetTokenException,
+  ValidationException,
 } from '../shared/exceptions/index.js'
 
 export class UserService {
@@ -84,6 +85,7 @@ export class UserService {
         username: saved.username,
         name: saved.name,
         is_admin: saved.is_admin,
+        avatar: saved.avatar,
       }
       return { token, expiresAt, user }
     })
@@ -93,6 +95,72 @@ export class UserService {
       ? ((await this.repository.sessionUser(this.passwords.tokenHash(token), this.clock.now())) ??
           null)
       : null
+  }
+  async update(id: number, input: unknown): Promise<User> {
+    const values = z
+      .object({
+        name: z.string().trim().min(1).max(80).optional(),
+        username: z
+          .string()
+          .trim()
+          .toLowerCase()
+          .regex(/^[a-z0-9_]{3,32}$/)
+          .optional(),
+        avatar: z
+          .string()
+          .max(22000)
+          .regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/)
+          .nullable()
+          .optional(),
+      })
+      .strict()
+      .refine((value) => Object.keys(value).length > 0)
+      .parse(input)
+    if (values.avatar) {
+      const data = Buffer.from(values.avatar.slice('data:image/webp;base64,'.length), 'base64')
+      if (
+        data.length < 20 ||
+        data.length > 16384 ||
+        data.toString('ascii', 0, 4) !== 'RIFF' ||
+        data.toString('ascii', 8, 12) !== 'WEBP' ||
+        data.readUInt32LE(4) !== data.length - 8 ||
+        !['VP8 ', 'VP8L', 'VP8X'].includes(data.toString('ascii', 12, 16))
+      )
+        throw new ValidationException('Invalid profile thumbnail')
+      const kind = data.toString('ascii', 12, 16)
+      let width = 0
+      let height = 0
+      // Bound decoded dimensions as well as bytes; see the WebP RIFF container specification.
+      if (
+        kind === 'VP8 ' &&
+        data.length >= 30 &&
+        data.subarray(23, 26).equals(Buffer.from([0x9d, 0x01, 0x2a]))
+      ) {
+        width = data.readUInt16LE(26) & 0x3fff
+        height = data.readUInt16LE(28) & 0x3fff
+      } else if (kind === 'VP8L' && data.length >= 25 && data[20] === 0x2f) {
+        const bits = data.readUInt32LE(21)
+        width = (bits & 0x3fff) + 1
+        height = ((bits >>> 14) & 0x3fff) + 1
+      } else if (kind === 'VP8X' && data.length >= 30 && !(data[20]! & 2)) {
+        width = data.readUIntLE(24, 3) + 1
+        height = data.readUIntLE(27, 3) + 1
+      }
+      if (width < 1 || height < 1 || width > 128 || height > 128)
+        throw new ValidationException('Profile thumbnail must be at most 128 by 128 pixels')
+    }
+    return this.database.transaction(async (db) => {
+      await this.database.lockUsers(db)
+      if (!(await this.repository.lock(id, db))) throw new UserNotFoundException()
+      if (
+        values.username &&
+        (await this.repository.list(db)).some(
+          (user) => user.id !== id && user.username === values.username,
+        )
+      )
+        throw new UsernameExistsException()
+      return this.repository.update(id, values, db)
+    })
   }
   async logout(token?: string): Promise<void> {
     if (token) await this.repository.deleteSession(this.passwords.tokenHash(token))

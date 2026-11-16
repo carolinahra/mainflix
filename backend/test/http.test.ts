@@ -35,6 +35,184 @@ class HttpFixture {
   }
 }
 
+test('previous weekly selections stay to be reviewed until every voter rates them', async () => {
+  const f = new HttpFixture()
+  const app = f.container.application.app
+  const admin = await f.container.userService.create(null, 'reviewqueue', 'Admin', 'abcdef', true)
+  const voters = await TestDatabase.users()
+  const pending = await TestDatabase.movie('Previous weekly movie')
+  const completed = await TestDatabase.movie('Fully reviewed weekly movie')
+  await TestDatabase.movie('Never selected')
+  for (const [week, movie] of [
+    ['2026-10-26', pending],
+    ['2026-11-02', pending],
+    ['2026-10-19', completed],
+  ] as const) {
+    await TestDatabase.pool.query(
+      'INSERT INTO rounds (week_start,winner_id,drawn_by,drawn_at) VALUES ($1,$2,$3,now())',
+      [week, movie.id, admin.id],
+    )
+  }
+  for (const user of [admin, ...voters.slice(0, 3)]) {
+    await f.container.reviewService.markWatched(user.id, pending.id)
+    await f.container.reviewService.save(user.id, pending.id, 4, '')
+  }
+  for (const user of voters) {
+    await f.container.reviewService.markWatched(user.id, completed.id)
+    await f.container.reviewService.save(user.id, completed.id, 4, '')
+  }
+  await request(app).get('/api/movies/to-review').expect(401)
+  const cookie = await f.login('reviewqueue', 'abcdef')
+  const list = () => request(app).get('/api/movies/to-review').set('Cookie', cookie).expect(200)
+  assert.deepEqual(
+    (await list()).body.map((movie: { id: number }) => movie.id),
+    [pending.id],
+  )
+  await f.container.roundService.current()
+  assert.deepEqual(
+    (await list()).body.map((movie: { id: number }) => movie.id),
+    [pending.id],
+  )
+  await f.container.reviewService.markWatched(voters[3]!.id, pending.id)
+  await f.container.reviewService.save(voters[3]!.id, pending.id, 0.5, '')
+  assert.deepEqual((await list()).body, [])
+})
+
+test('profiles edit only the signed-in user and preserve sessions and username uniqueness', async () => {
+  const f = new HttpFixture()
+  const app = f.container.application.app
+  const user = await f.container.userService.create(null, 'profile', 'Profile', 'abcdef')
+  await f.container.userService.create(null, 'taken', 'Taken', 'abcdef')
+  const cookie = await f.login('profile', 'abcdef')
+  const update = (body: object) =>
+    request(app)
+      .patch('/api/auth/me')
+      .set('Cookie', cookie)
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+  await request(app)
+    .patch('/api/auth/me')
+    .set('Origin', 'http://localhost:5173')
+    .send({ name: 'No' })
+    .expect(401)
+  await update({ name: 'New name', username: ' NEW_USER ' }).expect(200)
+  const me = await request(app).get('/api/auth/me').set('Cookie', cookie).expect(200)
+  assert.equal(me.body.id, user.id)
+  assert.equal(me.body.username, 'new_user')
+  assert.equal(me.body.name, 'New name')
+  await f.login('new_user', 'abcdef')
+  await request(app)
+    .post('/api/auth/login')
+    .set('Origin', 'http://localhost:5173')
+    .send({ identifier: 'profile', password: 'abcdef' })
+    .expect(401)
+  await update({ username: 'taken' }).expect(409)
+  const avatar = 'data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA'
+  await update({ avatar }).expect(200)
+  assert.equal((await request(app).get('/api/auth/me').set('Cookie', cookie)).body.avatar, avatar)
+  const oversized = Buffer.from(avatar.split(',')[1]!, 'base64')
+  oversized.writeUInt16LE(256, 26)
+  await update({ avatar: `data:image/webp;base64,${oversized.toString('base64')}` }).expect(400)
+  await update({ avatar: null }).expect(200)
+  assert.equal((await request(app).get('/api/auth/me').set('Cookie', cookie)).body.avatar, null)
+  for (const body of [
+    { name: '' },
+    { username: 'x' },
+    { is_admin: true },
+    { userId: user.id, name: 'Spoof' },
+    { avatar: 'https://example.com/avatar.svg' },
+    { avatar: 'data:image/webp;base64,AAAA' },
+    {},
+  ])
+    await update(body).expect(400)
+  await update({ name: 'Blocked' }).set('Origin', 'https://evil.test').expect(403)
+  const other = await f.login('taken', 'abcdef')
+  const claims = await Promise.all([
+    update({ username: 'contested' }),
+    request(app)
+      .patch('/api/auth/me')
+      .set('Cookie', other)
+      .set('Origin', 'http://localhost:5173')
+      .send({ username: 'contested' }),
+  ])
+  assert.deepEqual(claims.map((response) => response.status).sort(), [200, 409])
+})
+
+test('favorites and own reviews stay private and favorites never change nominations or eligibility', async () => {
+  const f = new HttpFixture()
+  const app = f.container.application.app
+  const first = await f.container.userService.create(null, 'firstfav', 'First', 'abcdef')
+  const second = await f.container.userService.create(null, 'secondfav', 'Second', 'abcdef')
+  const cookie = await f.login('firstfav', 'abcdef')
+  const other = await f.login('secondfav', 'abcdef')
+  const movie = await TestDatabase.movie('Favorite film')
+  const favorite = (method: 'put' | 'delete', auth = cookie) =>
+    request(app)
+      [method](`/api/movies/${movie.id}/favorite`)
+      .set('Cookie', auth)
+      .set('Origin', 'http://localhost:5173')
+      .send({})
+  await request(app).get('/api/movies/favorites').expect(401)
+  await favorite('put').expect(204)
+  await favorite('put').expect(204)
+  assert.equal(await f.container.reviewRepository.isWatched(first.id, movie.id), false)
+  const mine = await request(app).get('/api/movies/favorites').set('Cookie', cookie).expect(200)
+  assert.deepEqual(
+    mine.body.map((row: { id: number }) => row.id),
+    [movie.id],
+  )
+  assert.deepEqual(
+    (await request(app).get('/api/movies/favorites').set('Cookie', other).expect(200)).body,
+    [],
+  )
+  assert.equal(
+    (await request(app).get(`/api/movies/${movie.id}`).set('Cookie', cookie)).body.favorite,
+    true,
+  )
+  for (const user of [first, second]) {
+    await f.container.reviewService.markWatched(user.id, movie.id)
+    await f.container.reviewService.save(user.id, movie.id, 4.5, user.name)
+  }
+  const reviews = await request(app)
+    .get('/api/movies/reviews?mine=true')
+    .set('Cookie', cookie)
+    .expect(200)
+  assert.deepEqual(
+    reviews.body[0].reviews.map((row: { user_id: number }) => row.user_id),
+    [first.id],
+  )
+  assert.equal((await f.container.roundService.current()).responses.length, 0)
+  assert.equal((await f.container.movieService.find(movie.id)).eligible, true)
+  await favorite('delete').expect(204)
+  await favorite('delete').expect(204)
+  assert.deepEqual((await request(app).get('/api/movies/favorites').set('Cookie', cookie)).body, [])
+})
+
+test('TMDB favorites import once without nominating or restoring rejected movies', async () => {
+  const f = new HttpFixture()
+  const user = await f.container.userService.create(null, 'tmdbfavorite', 'Favorite', 'abcdef')
+  f.container.tmdb = new Tmdb('test', async () => Response.json({ id: 99, title: 'TMDB favorite' }))
+  const app = f.container.application.app
+  const cookie = await f.login(user.username, 'abcdef')
+  const add = () =>
+    request(app)
+      .post('/api/movies/favorites')
+      .set('Cookie', cookie)
+      .set('Origin', 'http://localhost:5173')
+      .send({ tmdbId: 99 })
+  const [a, b] = await Promise.all([add().expect(200), add().expect(200)])
+  assert.equal(a.body.id, b.body.id)
+  assert.equal((await TestDatabase.pool.query('SELECT count(*) FROM movies')).rows[0].count, '1')
+  await TestDatabase.pool.query(
+    "UPDATE movies SET eligible=false,approval_status='rejected' WHERE id=$1",
+    [a.body.id],
+  )
+  await add().expect(200)
+  assert.equal((await f.container.movieService.find(a.body.id)).eligible, false)
+  assert.equal((await f.container.movieService.find(a.body.id)).approval_status, 'rejected')
+  assert.equal((await f.container.roundService.current()).responses.length, 0)
+})
+
 test('shared reviews require login and paginate movies without splitting their reviews', async () => {
   const f = new HttpFixture()
   const app = f.container.application.app

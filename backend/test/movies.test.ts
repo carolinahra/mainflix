@@ -151,7 +151,13 @@ test('pending duplicates can merge into an existing movie without duplicating ca
   )
   const existing = await TestDatabase.movie('Existing')
   const pending = await TestDatabase.movie('Alternate title', 'pending')
+  await movies.favorite(friends[0]!.id, pending.id, true)
+  await movies.favorite(friends[0]!.id, existing.id, true)
   assert.equal((await movies.merge(pending.id, existing.id)).id, existing.id)
+  assert.deepEqual(
+    (await movies.favorites(friends[0]!.id, 30, 0)).map((movie) => movie.id),
+    [existing.id],
+  )
   assert.equal((await pool.query('SELECT id FROM movies WHERE id=$1', [pending.id])).rowCount, 0)
   await assert.rejects(movies.merge(existing.id, existing.id), { code: 'INVALID_MERGE' })
 })
@@ -204,6 +210,7 @@ test('half-point migration preserves existing reviews and runs repeatedly', asyn
       '002_usernames.sql',
       '003_optional_email.sql',
       '004_half_point_reviews.sql',
+      '005_profiles_favorites.sql',
     ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
   )
   await TestDatabase.database.migrate(sources)

@@ -8,7 +8,7 @@ export class UserRepository {
   async list(db: Connection = this.database.client): Promise<User[]> {
     return db
       .selectFrom('users')
-      .select(['id', 'email', 'username', 'name', 'is_admin'])
+      .select(['id', 'email', 'username', 'name', 'is_admin', 'avatar'])
       .orderBy('id')
       .execute()
   }
@@ -23,7 +23,7 @@ export class UserRepository {
     return db
       .insertInto('users')
       .values({ email, username, name, password_hash: passwordHash, is_admin: admin })
-      .returning(['id', 'email', 'username', 'name', 'is_admin'])
+      .returning(['id', 'email', 'username', 'name', 'is_admin', 'avatar'])
       .executeTakeFirstOrThrow()
   }
   async byLogin(identifier: string): Promise<StoredUser | undefined> {
@@ -42,6 +42,18 @@ export class UserRepository {
       .set({ password_hash: passwordHash })
       .where('id', '=', id)
       .execute()
+  }
+  async update(
+    id: number,
+    values: { name?: string; username?: string; avatar?: string | null },
+    db: Connection,
+  ): Promise<User> {
+    return db
+      .updateTable('users')
+      .set(values)
+      .where('id', '=', id)
+      .returning(['id', 'email', 'username', 'name', 'is_admin', 'avatar'])
+      .executeTakeFirstOrThrow()
   }
   async deleteSession(hash: string, db: Connection = this.database.client): Promise<void> {
     await db.deleteFrom('sessions').where('token_hash', '=', hash).execute()
@@ -66,7 +78,7 @@ export class UserRepository {
     return this.database.client
       .selectFrom('sessions as s')
       .innerJoin('users as u', 'u.id', 's.user_id')
-      .select(['u.id', 'u.email', 'u.username', 'u.name', 'u.is_admin'])
+      .select(['u.id', 'u.email', 'u.username', 'u.name', 'u.is_admin', 'u.avatar'])
       .where('s.token_hash', '=', hash)
       .where('s.expires_at', '>', now)
       .executeTakeFirst()

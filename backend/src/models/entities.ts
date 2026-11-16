@@ -4,6 +4,7 @@ export interface User {
   username: string
   name: string
   is_admin: boolean
+  avatar: string | null
 }
 export interface StoredUser extends User {
   password_hash: string
@@ -98,6 +99,7 @@ export interface Member {
   id: number
   name: string
   username: string
+  avatar: string | null
 }
 export type RoundStatus = 'collecting' | 'ready' | 'skipped' | 'selected'
 export interface RoundState extends RoundRow {
@@ -116,6 +118,7 @@ export interface Review {
   user_id: number
   movie_id: number
   name: string
+  avatar: string | null
   rating: number
   text: string
   created_at: Date

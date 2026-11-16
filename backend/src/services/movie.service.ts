@@ -94,6 +94,33 @@ export class MovieService {
   async pending(limit: number, offset: number): Promise<Movie[]> {
     return this.repository.pending(limit, offset)
   }
+  async favorites(userId: number, limit: number, offset: number): Promise<Movie[]> {
+    return this.repository.favorites(userId, limit, offset)
+  }
+  async isFavorite(userId: number, movieId: number): Promise<boolean> {
+    return this.repository.isFavorite(userId, movieId)
+  }
+  async favorite(userId: number, movieId: number, favorite: boolean): Promise<void> {
+    await this.database.transaction(async (db) => {
+      await this.database.lockGroup(db)
+      if (!(await this.repository.find(movieId, db))) throw new MovieNotFoundException()
+      await this.repository.favorite(userId, movieId, favorite, db)
+    })
+  }
+  async favoriteTmdb(userId: number, tmdbId: number, language: Language): Promise<Movie> {
+    const metadata = await this.tmdb.details(tmdbId, language)
+    return this.database.transaction(async (db) => {
+      await this.database.lockGroup(db)
+      let movie = await this.repository.findTmdb(tmdbId, db)
+      if (!movie)
+        movie = await this.repository.create(
+          { ...metadata, submitted_by: userId, approval_status: 'approved' },
+          db,
+        )
+      await this.repository.favorite(userId, movie.id, true, db)
+      return movie
+    })
+  }
   async submit(userId: number, input: MovieInput, language: Language = 'en'): Promise<Movie> {
     if (input.tmdbId) {
       const existing: Movie | undefined = await this.repository.findTmdb(input.tmdbId)
@@ -162,6 +189,7 @@ export class MovieService {
       const to: Movie | undefined = await this.repository.find(target, db)
       if (source === target || from?.approval_status !== 'pending' || !to)
         throw new InvalidMergeException()
+      await this.repository.mergeFavorites(source, target, db)
       await this.repository.removePending(source, db)
       return to
     })

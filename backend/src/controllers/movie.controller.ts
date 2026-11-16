@@ -14,9 +14,14 @@ export class MovieController {
     this.router.post('/', this.submit.bind(this))
     this.router.get('/browse', this.browse.bind(this))
     this.router.get('/reviews', this.reviewed.bind(this))
+    this.router.get('/to-review', this.toReview.bind(this))
+    this.router.get('/favorites', this.favorites.bind(this))
+    this.router.post('/favorites', this.favoriteTmdb.bind(this))
     this.router.get('/:id', this.detail.bind(this))
     this.router.put('/:id/watched', this.watched.bind(this))
     this.router.put('/:id/review', this.review.bind(this))
+    this.router.put('/:id/favorite', this.favorite.bind(this))
+    this.router.delete('/:id/favorite', this.favorite.bind(this))
   }
   private async browse(req: HttpRequest, res: HttpResponse): Promise<void> {
     const category = z.enum(movieCategories).parse(req.query.category)
@@ -56,11 +61,41 @@ export class MovieController {
   }
   private async detail(req: HttpRequest, res: HttpResponse): Promise<void> {
     const id: number = Http.id.parse(req.params.id)
-    res.json({ movie: await this.movies.find(id), ...(await this.reviews.list(id)) })
+    res.json({
+      movie: await this.movies.find(id),
+      ...(await this.reviews.list(id)),
+      favorite: await this.movies.isFavorite(Http.user(res).id, id),
+    })
   }
   private async reviewed(req: HttpRequest, res: HttpResponse): Promise<void> {
     const { limit, offset } = Http.pagination.parse(req.query)
-    res.json(await this.reviews.all(limit, offset))
+    const mine = z.enum(['true', 'false']).optional().parse(req.query.mine) === 'true'
+    res.json(await this.reviews.all(limit, offset, mine ? Http.user(res).id : undefined))
+  }
+  private async toReview(_req: HttpRequest, res: HttpResponse): Promise<void> {
+    res.json(await this.reviews.toReview())
+  }
+  private async favorites(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const { limit, offset } = Http.pagination.parse(req.query)
+    res.json(await this.movies.favorites(Http.user(res).id, limit, offset))
+  }
+  private async favorite(req: HttpRequest, res: HttpResponse): Promise<void> {
+    z.object({})
+      .strict()
+      .parse(req.body ?? {})
+    await this.movies.favorite(
+      Http.user(res).id,
+      Http.id.parse(req.params.id),
+      req.method === 'PUT',
+    )
+    res.sendStatus(204)
+  }
+  private async favoriteTmdb(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const { tmdbId } = z
+      .object({ tmdbId: z.number().int().positive().max(2147483647) })
+      .strict()
+      .parse(req.body)
+    res.json(await this.movies.favoriteTmdb(Http.user(res).id, tmdbId, Http.language(req)))
   }
   private async watched(req: HttpRequest, res: HttpResponse): Promise<void> {
     z.object({})

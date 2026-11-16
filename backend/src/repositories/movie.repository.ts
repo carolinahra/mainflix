@@ -8,6 +8,45 @@ export class MovieRepository {
   async find(id: number, db: Connection = this.database.client): Promise<Movie | undefined> {
     return db.selectFrom('movies').selectAll().where('id', '=', id).executeTakeFirst()
   }
+  async favorites(userId: number, limit: number, offset: number): Promise<Movie[]> {
+    return this.database.client
+      .selectFrom('favorite_movies as f')
+      .innerJoin('movies as m', 'm.id', 'f.movie_id')
+      .selectAll('m')
+      .where('f.user_id', '=', userId)
+      .orderBy('f.created_at', 'desc')
+      .orderBy('m.id', 'desc')
+      .limit(limit)
+      .offset(offset)
+      .execute()
+  }
+  async isFavorite(userId: number, movieId: number): Promise<boolean> {
+    return !!(await this.database.client
+      .selectFrom('favorite_movies')
+      .select('movie_id')
+      .where('user_id', '=', userId)
+      .where('movie_id', '=', movieId)
+      .executeTakeFirst())
+  }
+  async favorite(
+    userId: number,
+    movieId: number,
+    favorite: boolean,
+    db: Connection,
+  ): Promise<void> {
+    if (favorite)
+      await db
+        .insertInto('favorite_movies')
+        .values({ user_id: userId, movie_id: movieId })
+        .onConflict((oc) => oc.columns(['user_id', 'movie_id']).doNothing())
+        .execute()
+    else
+      await db
+        .deleteFrom('favorite_movies')
+        .where('user_id', '=', userId)
+        .where('movie_id', '=', movieId)
+        .execute()
+  }
   async findTmdb(id: number, db: Connection = this.database.client): Promise<Movie | undefined> {
     return db.selectFrom('movies').selectAll().where('tmdb_id', '=', id).executeTakeFirst()
   }
@@ -60,6 +99,19 @@ export class MovieRepository {
       .where('id', '=', id)
       .returningAll()
       .executeTakeFirstOrThrow()
+  }
+  async mergeFavorites(source: number, target: number, db: Connection): Promise<void> {
+    await db
+      .insertInto('favorite_movies')
+      .columns(['user_id', 'movie_id', 'created_at'])
+      .expression((eb) =>
+        eb
+          .selectFrom('favorite_movies')
+          .select(['user_id', eb.val(target).as('movie_id'), 'created_at'])
+          .where('movie_id', '=', source),
+      )
+      .onConflict((oc) => oc.columns(['user_id', 'movie_id']).doNothing())
+      .execute()
   }
   async removePending(id: number, db: Connection): Promise<void> {
     await db

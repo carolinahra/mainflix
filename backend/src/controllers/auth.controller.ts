@@ -14,6 +14,7 @@ export class AuthController {
     this.router.post('/login', this.login.bind(this))
     this.router.post('/reset', this.reset.bind(this))
     this.router.get('/me', auth.authenticate.bind(auth), this.me.bind(this))
+    this.router.patch('/me', auth.authenticate.bind(auth), this.profile.bind(this))
     this.router.post('/logout', this.logout.bind(this))
     this.router.put('/password', auth.authenticate.bind(auth), this.password.bind(this))
   }
@@ -47,6 +48,10 @@ export class AuthController {
   }
   private me(_req: HttpRequest, res: HttpResponse): void {
     res.json(Http.user(res))
+  }
+  private async profile(req: HttpRequest, res: HttpResponse): Promise<void> {
+    await this.users.attempt(`profile:user:${Http.user(res).id}`, 30)
+    res.json(await this.users.update(Http.user(res).id, req.body))
   }
   private async logout(req: HttpRequest, res: HttpResponse): Promise<void> {
     await this.users.logout(this.auth.token(req))

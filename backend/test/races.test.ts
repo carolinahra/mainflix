@@ -52,6 +52,29 @@ class RaceFixture {
   }
 }
 
+test('queued favorite before movie merge is preserved on the target movie', async () => {
+  const f = new RaceFixture()
+  const [user] = await TestDatabase.users()
+  const source = await TestDatabase.movie('Pending favorite', 'pending')
+  const target = await TestDatabase.movie('Target favorite')
+  const barrier = await LockBarrier.open()
+  let favorite: Promise<void> | undefined
+  let merge: Promise<unknown> | undefined
+  try {
+    favorite = f.container.movieService.favorite(user!.id, source.id, true)
+    await barrier.waiting(1)
+    merge = f.container.movieService.merge(source.id, target.id)
+    await barrier.waiting(2)
+  } finally {
+    await barrier.release()
+  }
+  await Promise.all([favorite, merge])
+  assert.deepEqual(
+    (await f.container.movieService.favorites(user!.id, 30, 0)).map((movie) => movie.id),
+    [target.id],
+  )
+})
+
 test('queued admin exclusion before draw invalidates nominations and prevents selection', async () => {
   const f = new RaceFixture()
   const { week, movieId, userId } = await f.round()
