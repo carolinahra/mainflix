@@ -1,3 +1,4 @@
+import { ForbiddenException } from '../shared/exceptions/index.js'
 import { Router, type Router as ExpressRouter } from 'express'
 import { z } from 'zod'
 import type { MovieService } from '../services/movie.service.js'
@@ -44,9 +45,11 @@ export class AdminController {
     res.json(await this.movies.merge(Http.id.parse(req.params.id), body.targetId))
   }
   private async members(_req: HttpRequest, res: HttpResponse): Promise<void> {
+    if (!Http.user(res).is_admin) throw new ForbiddenException()
     res.json(await this.users.list())
   }
   private async reset(req: HttpRequest, res: HttpResponse): Promise<void> {
+    if (!Http.user(res).is_admin) throw new ForbiddenException()
     const reset = await this.users.issueReset(Http.id.parse(req.params.id))
     res.json({ url: `${this.config.origin}/#reset=${reset.token}`, expiresAt: reset.expiresAt })
   }

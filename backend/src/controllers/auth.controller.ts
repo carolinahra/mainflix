@@ -1,3 +1,5 @@
+import type { MovieService } from '../services/movie.service.js'
+import type { ReviewService } from '../services/review.service.js'
 import { Router, type Router as ExpressRouter } from 'express'
 import { z } from 'zod'
 import type { UserService } from '../services/user.service.js'
@@ -10,13 +12,25 @@ export class AuthController {
     private readonly users: UserService,
     private readonly auth: AuthMiddleware,
     private readonly config: ContainerConfig,
+    private readonly movies: MovieService,
+    private readonly reviews: ReviewService,
   ) {
+    this.router.get('/favorites', auth.authenticate.bind(auth), this.favorites.bind(this))
+    this.router.get('/reviews', auth.authenticate.bind(auth), this.reviewsByUser.bind(this))
     this.router.post('/login', this.login.bind(this))
     this.router.post('/reset', this.reset.bind(this))
     this.router.get('/me', auth.authenticate.bind(auth), this.me.bind(this))
     this.router.patch('/me', auth.authenticate.bind(auth), this.profile.bind(this))
     this.router.post('/logout', this.logout.bind(this))
     this.router.put('/password', auth.authenticate.bind(auth), this.password.bind(this))
+  }
+  private async favorites(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const { limit, offset } = Http.pagination.parse(req.query)
+    res.json(await this.movies.favorites(Http.user(res).id, limit, offset))
+  }
+  private async reviewsByUser(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const { limit, offset } = Http.pagination.parse(req.query)
+    res.json(await this.reviews.all(limit, offset, Http.user(res).id))
   }
   private async login(req: HttpRequest, res: HttpResponse): Promise<void> {
     const body = z

@@ -1,3 +1,6 @@
+import { GroupRepository } from './repositories/group.repository.js'
+import { GroupService } from './services/group.service.js'
+import { GroupController } from './controllers/group.controller.js'
 import { Database } from './repositories/database.js'
 import { UserRepository } from './repositories/user.repository.js'
 import { MovieRepository } from './repositories/movie.repository.js'
@@ -26,6 +29,9 @@ export interface ContainerConfig {
   tmdbToken: string
 }
 interface ContainerProps {
+  groupRepository?: GroupRepository
+  groupService?: GroupService
+  groupController?: GroupController
   database?: Database
   clock?: Clock
   lottery?: Lottery
@@ -49,7 +55,38 @@ interface ContainerProps {
 }
 export class Container {
   private readonly props: ContainerProps = {}
-  constructor(readonly config: ContainerConfig) {}
+  constructor(
+    readonly config: ContainerConfig,
+    readonly groupId: number = 1,
+  ) {}
+  forGroup(groupId: number): Container {
+    const scoped = new Container(this.config, groupId)
+    scoped.database = this.database
+    scoped.clock = this.clock
+    scoped.lottery = this.lottery
+    scoped.tmdb = this.tmdb
+    return scoped
+  }
+  get groupRepository(): GroupRepository {
+    return (this.props.groupRepository ??= new GroupRepository(this.database))
+  }
+  get groupService(): GroupService {
+    return (this.props.groupService ??= new GroupService(
+      this.database,
+      this.groupRepository,
+      this.userRepository,
+      this.clock,
+      this.passwords,
+    ))
+  }
+  get groupController(): GroupController {
+    return (this.props.groupController ??= new GroupController(
+      this.groupService,
+      this.userService,
+      this.authMiddleware,
+      this.config,
+    ))
+  }
   get database(): Database {
     return (this.props.database ??= Database.connect(this.config.databaseUrl))
   }
@@ -81,13 +118,13 @@ export class Container {
     return (this.props.userRepository ??= new UserRepository(this.database))
   }
   get movieRepository(): MovieRepository {
-    return (this.props.movieRepository ??= new MovieRepository(this.database))
+    return (this.props.movieRepository ??= new MovieRepository(this.database, this.groupId))
   }
   get roundRepository(): RoundRepository {
-    return (this.props.roundRepository ??= new RoundRepository(this.database))
+    return (this.props.roundRepository ??= new RoundRepository(this.database, this.groupId))
   }
   get reviewRepository(): ReviewRepository {
-    return (this.props.reviewRepository ??= new ReviewRepository(this.database))
+    return (this.props.reviewRepository ??= new ReviewRepository(this.database, this.groupId))
   }
   get userService(): UserService {
     return (this.props.userService ??= new UserService(
@@ -134,6 +171,8 @@ export class Container {
       this.userService,
       this.authMiddleware,
       this.config,
+      this.movieService,
+      this.reviewService,
     ))
   }
   get roundController(): RoundController {
