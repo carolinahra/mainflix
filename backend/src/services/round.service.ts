@@ -35,7 +35,7 @@ export class RoundService {
     private readonly tmdb: Tmdb,
   ) {}
   private async prepare(db: Connection, expected?: string): Promise<string> {
-    await this.database.lockGroup(db)
+    await this.database.lockGroup(db, this.repository.groupId)
     const week: string = this.clock.weekKey()
     if (expected && expected !== week) throw new RoundExpiredException()
     await this.repository.ensure(week, db)
@@ -49,14 +49,15 @@ export class RoundService {
     const winner: Movie | null = row.winner_id
       ? ((await this.movies.find(row.winner_id, db)) ?? null)
       : null
+    const members = await this.repository.members(db, week)
     const status: RoundStatus = winner
       ? 'selected'
-      : responses.length < 4
+      : members.length === 0 || responses.length < members.length
         ? 'collecting'
         : responses.some((r) => r.movie_id !== null)
           ? 'ready'
           : 'skipped'
-    return { ...row, winner, status, responses, members: await this.repository.members(db) }
+    return { ...row, winner, status, responses, members }
   }
   async current(): Promise<RoundState> {
     return this.database.transaction(async (db) => this.snapshot(await this.prepare(db), db))
@@ -104,6 +105,7 @@ export class RoundService {
     const result: RoundState | AppException = await this.database.transaction(async (db) => {
       await this.prepare(db, week)
       const state: RoundState = await this.snapshot(week, db)
+      if (!(await this.repository.isMember(userId, db))) throw new ForbiddenException()
       if (state.winner) return state
       // Commit invalidation before reporting that replacement nominations are needed.
       if (state.status !== 'ready')

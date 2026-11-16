@@ -1,25 +1,31 @@
 import type { Database } from './database.js'
 import type { Movie, MovieReviews, ReviewedMovie } from '../models/entities.js'
 export class ReviewRepository {
-  constructor(private readonly database: Database) {}
-  async toReview(): Promise<Movie[]> {
+  constructor(
+    private readonly database: Database,
+    readonly groupId: number = 1,
+  ) {}
+  async toReview(week: string): Promise<Movie[]> {
     return this.database.client
       .selectFrom('movies as m')
+      .where('m.group_id', '=', this.groupId)
       .innerJoin('rounds as round', 'round.winner_id', 'm.id')
+      .where('round.group_id', '=', this.groupId)
       .selectAll('m')
       .where((eb) =>
         eb.exists(
           eb
-            .selectFrom('users as member')
-            .select('member.id')
-            .where('member.is_admin', '=', false)
+            .selectFrom('group_members as member')
+            .select('member.user_id')
+            .where('member.group_id', '=', this.groupId)
+            .where('member.voting_from', '<=', week)
             .where((member) =>
               member.not(
                 member.exists(
                   member
                     .selectFrom('reviews as review')
                     .select('review.user_id')
-                    .whereRef('review.user_id', '=', 'member.id')
+                    .whereRef('review.user_id', '=', 'member.user_id')
                     .whereRef('review.movie_id', '=', 'm.id'),
                 ),
               ),
@@ -90,6 +96,7 @@ export class ReviewRepository {
   async all(limit: number, offset: number, userId?: number): Promise<ReviewedMovie[]> {
     const movies = await this.database.client
       .selectFrom('movies as m')
+      .$if(userId === undefined, (query) => query.where('m.group_id', '=', this.groupId))
       .innerJoin('reviews as r', 'r.movie_id', 'm.id')
       .selectAll('m')
       .$if(userId !== undefined, (query) => query.where('r.user_id', '=', userId!))

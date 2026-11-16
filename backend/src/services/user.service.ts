@@ -5,7 +5,6 @@ import type { Passwords } from './passwords.js'
 import type { Clock } from './clock.js'
 import type { User, StoredUser, Session, ResetToken } from '../models/entities.js'
 import {
-  GroupFullException,
   EmailExistsException,
   UsernameExistsException,
   AdminExistsException,
@@ -43,12 +42,14 @@ export class UserService {
     return this.database.transaction(async (db) => {
       await this.database.lockUsers(db)
       const existing: User[] = await this.repository.list(db)
-      if (!admin && existing.filter((u) => !u.is_admin).length >= 4) throw new GroupFullException()
       if (email !== null && existing.some((u) => u.email === email))
         throw new EmailExistsException()
       if (existing.some((u) => u.username === username)) throw new UsernameExistsException()
       if (admin && existing.some((u) => u.is_admin)) throw new AdminExistsException()
-      return this.repository.create(email, username, name, hash, admin, db)
+      const user = await this.repository.create(email, username, name, hash, admin, db)
+      // CLI provisioning retains membership in the original group; invitation signup does not.
+      await this.repository.provisionMembership(user.id, admin, this.clock.weekKey(), db)
+      return user
     })
   }
   async attempt(key: string, max: number): Promise<void> {

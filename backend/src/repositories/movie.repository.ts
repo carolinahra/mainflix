@@ -4,9 +4,17 @@ import type { Connection, Schema } from './schema.js'
 import type { Movie } from '../models/entities.js'
 
 export class MovieRepository {
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    readonly groupId: number = 1,
+  ) {}
   async find(id: number, db: Connection = this.database.client): Promise<Movie | undefined> {
-    return db.selectFrom('movies').selectAll().where('id', '=', id).executeTakeFirst()
+    return db
+      .selectFrom('movies')
+      .where('group_id', '=', this.groupId)
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst()
   }
   async favorites(userId: number, limit: number, offset: number): Promise<Movie[]> {
     return this.database.client
@@ -48,11 +56,17 @@ export class MovieRepository {
         .execute()
   }
   async findTmdb(id: number, db: Connection = this.database.client): Promise<Movie | undefined> {
-    return db.selectFrom('movies').selectAll().where('tmdb_id', '=', id).executeTakeFirst()
+    return db
+      .selectFrom('movies')
+      .where('group_id', '=', this.groupId)
+      .selectAll()
+      .where('tmdb_id', '=', id)
+      .executeTakeFirst()
   }
   async search(query: string, limit: number, offset: number): Promise<Movie[]> {
     return this.database.client
       .selectFrom('movies')
+      .where('group_id', '=', this.groupId)
       .selectAll()
       .where(sql<boolean>`position(lower(${query}) in lower(title)) > 0`)
       .orderBy('title')
@@ -64,6 +78,7 @@ export class MovieRepository {
   async pending(limit: number, offset: number): Promise<Movie[]> {
     return this.database.client
       .selectFrom('movies')
+      .where('group_id', '=', this.groupId)
       .selectAll()
       .where('approval_status', '=', 'pending')
       .orderBy('id')
@@ -74,6 +89,7 @@ export class MovieRepository {
   async recentlyAdded(limit: number, offset: number): Promise<Movie[]> {
     return this.database.client
       .selectFrom('movies')
+      .where('group_id', '=', this.groupId)
       .selectAll()
       .orderBy('created_at', 'desc')
       .orderBy('id', 'desc')
@@ -85,18 +101,24 @@ export class MovieRepository {
     if (!ids.length) return []
     return this.database.client
       .selectFrom('movies')
+      .where('group_id', '=', this.groupId)
       .selectAll()
       .where('tmdb_id', 'in', ids)
       .execute()
   }
   async create(values: Insertable<Schema['movies']>, db: Connection): Promise<Movie> {
-    return db.insertInto('movies').values(values).returningAll().executeTakeFirstOrThrow()
+    return db
+      .insertInto('movies')
+      .values({ ...values, group_id: this.groupId })
+      .returningAll()
+      .executeTakeFirstOrThrow()
   }
   async update(id: number, values: Updateable<Schema['movies']>, db: Connection): Promise<Movie> {
     return db
       .updateTable('movies')
       .set(values)
       .where('id', '=', id)
+      .where('group_id', '=', this.groupId)
       .returningAll()
       .executeTakeFirstOrThrow()
   }
@@ -116,6 +138,7 @@ export class MovieRepository {
   async removePending(id: number, db: Connection): Promise<void> {
     await db
       .deleteFrom('movies')
+      .where('group_id', '=', this.groupId)
       .where('id', '=', id)
       .where('approval_status', '=', 'pending')
       .execute()

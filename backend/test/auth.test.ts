@@ -218,7 +218,7 @@ test('password changes require the old password and revoke sessions/reset links'
   await assert.rejects(auth.reset(reset.token, password), { code: 'INVALID_RESET_TOKEN' })
 })
 
-test('provisioning allows four voting profiles plus one admin, including concurrent creation', async () => {
+test('provisioning supports flexible membership and retains one app administrator', async () => {
   const { auth } = await TestDatabase.auth()
   await assert.rejects(auth.create('other@example.com', 'other', 'Admin', password, true), {
     code: 'ADMIN_EXISTS',
@@ -228,11 +228,8 @@ test('provisioning allows four voting profiles plus one admin, including concurr
       auth.create(`friend${n}@example.com`, `friend${n}`, `Friend ${n}`, password, false),
     ),
   )
-  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 4)
-  const rejected = results.find((r) => r.status === 'rejected')
-  assert.ok(rejected?.status === 'rejected')
-  assert.equal(rejected.reason.code, 'GROUP_FULL')
-  assert.equal(Number((await pool.query('SELECT count(*) FROM users')).rows[0].count), 5)
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 5)
+  assert.equal(Number((await pool.query('SELECT count(*) FROM users')).rows[0].count), 6)
 })
 
 test('an admin can be provisioned after all four voting profiles exist', async () => {

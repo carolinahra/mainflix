@@ -25,8 +25,8 @@ export class Database {
   async transaction<T>(work: (db: Transaction<Schema>) => Promise<T>): Promise<T> {
     return this.client.transaction().execute(work)
   }
-  async lockGroup(db: Connection): Promise<void> {
-    await sql`SELECT pg_advisory_xact_lock(48151001)`.execute(db)
+  async lockGroup(db: Connection, groupId: number = 1): Promise<void> {
+    await sql`SELECT pg_advisory_xact_lock(48151, ${groupId})`.execute(db)
   }
   async lockUsers(db: Connection): Promise<void> {
     await sql`SELECT pg_advisory_xact_lock(48151003)`.execute(db)

@@ -3,6 +3,7 @@ import type { ApprovalStatus } from '../../models/entities.js'
 type Timestamp = ColumnType<Date, Date | undefined, Date>
 
 interface MovieTableDef {
+  group_id: Generated<number>
   id: GeneratedAlways<number>
   tmdb_id: Generated<number | null>
   title: string

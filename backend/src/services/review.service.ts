@@ -21,6 +21,7 @@ export class ReviewService {
   async save(userId: number, movieId: number, rating: number, text: string): Promise<void> {
     if (!Number.isInteger(rating * 2) || rating < 0.5 || rating > 5 || text.length > 10000)
       throw new InvalidReviewException()
+    if (!(await this.movies.find(movieId))) throw new MovieNotFoundException()
     if (!(await this.repository.isWatched(userId, movieId))) throw new MovieNotWatchedException()
     await this.repository.save(userId, movieId, rating, text, this.clock.now())
   }
@@ -32,6 +33,6 @@ export class ReviewService {
     return this.repository.all(limit, offset, userId)
   }
   async toReview(): Promise<Movie[]> {
-    return this.repository.toReview()
+    return this.repository.toReview(this.clock.weekKey())
   }
 }

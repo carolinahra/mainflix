@@ -35,16 +35,26 @@ export class TestDatabase {
           '003_optional_email.sql',
           '004_half_point_reviews.sql',
           '005_profiles_favorites.sql',
+          '006_groups.sql',
         ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )
-    await this.pool.query('TRUNCATE users, movies, rounds, rate_limits RESTART IDENTITY CASCADE')
+    await this.pool.query(
+      'TRUNCATE users, movies, rounds, groups, rate_limits RESTART IDENTITY CASCADE',
+    )
+    await this.pool.query("INSERT INTO groups (name) VALUES ('Mainflix')")
   }
   static async users(): Promise<User[]> {
-    return (
+    const users = (
       await this.pool.query<User>(`INSERT INTO users (email,username,password_hash,name,is_admin)
       SELECT 'friend' || n || '@example.com','friend' || n,'unused','Friend ' || n,false FROM generate_series(1,4) n RETURNING id,email,username,name,is_admin,avatar`)
     ).rows
+    for (const user of users)
+      await this.database.client
+        .insertInto('group_members')
+        .values({ group_id: 1, user_id: user.id, voting_from: '1970-01-05' })
+        .execute()
+    return users
   }
   static async movie(title: string = 'Movie', status: string = 'approved'): Promise<Movie> {
     return (

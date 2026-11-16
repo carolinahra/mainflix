@@ -13,7 +13,7 @@ class LockBarrier {
     const client: PoolClient = await TestDatabase.pool.connect()
     await client.query('BEGIN')
     if (userId) await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId])
-    else await client.query('SELECT pg_advisory_xact_lock(48151001)')
+    else await client.query('SELECT pg_advisory_xact_lock(48151,1)')
     return new LockBarrier(client)
   }
   async waiting(count: number): Promise<void> {

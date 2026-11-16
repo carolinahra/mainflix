@@ -102,7 +102,7 @@ export class MovieService {
   }
   async favorite(userId: number, movieId: number, favorite: boolean): Promise<void> {
     await this.database.transaction(async (db) => {
-      await this.database.lockGroup(db)
+      await this.database.lockGroup(db, this.repository.groupId)
       if (!(await this.repository.find(movieId, db))) throw new MovieNotFoundException()
       await this.repository.favorite(userId, movieId, favorite, db)
     })
@@ -110,7 +110,7 @@ export class MovieService {
   async favoriteTmdb(userId: number, tmdbId: number, language: Language): Promise<Movie> {
     const metadata = await this.tmdb.details(tmdbId, language)
     return this.database.transaction(async (db) => {
-      await this.database.lockGroup(db)
+      await this.database.lockGroup(db, this.repository.groupId)
       let movie = await this.repository.findTmdb(tmdbId, db)
       if (!movie)
         movie = await this.repository.create(
@@ -130,7 +130,7 @@ export class MovieService {
       ? await this.tmdb.details(input.tmdbId, language)
       : undefined
     return this.database.transaction(async (db) => {
-      await this.database.lockGroup(db)
+      await this.database.lockGroup(db, this.repository.groupId)
       // Recheck under the lock after the external request to handle simultaneous imports.
       if (metadata) {
         const existing = await this.repository.findTmdb(metadata.tmdb_id, db)
@@ -153,7 +153,7 @@ export class MovieService {
       ? await this.tmdb.details(patch.tmdbId)
       : undefined
     return this.database.transaction(async (db) => {
-      await this.database.lockGroup(db)
+      await this.database.lockGroup(db, this.repository.groupId)
       const movie: Movie | undefined = await this.repository.find(id, db)
       if (!movie) throw new MovieNotFoundException()
       if (metadata) {
@@ -184,7 +184,7 @@ export class MovieService {
   }
   async merge(source: number, target: number): Promise<Movie> {
     return this.database.transaction(async (db) => {
-      await this.database.lockGroup(db)
+      await this.database.lockGroup(db, this.repository.groupId)
       const from: Movie | undefined = await this.repository.find(source, db)
       const to: Movie | undefined = await this.repository.find(target, db)
       if (source === target || from?.approval_status !== 'pending' || !to)

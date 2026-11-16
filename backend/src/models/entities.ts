@@ -20,6 +20,7 @@ export interface ResetToken {
 }
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export interface Movie {
+  group_id: number
   id: number
   tmdb_id: number | null
   title: string
@@ -144,3 +145,16 @@ export type Serialized<T> = T extends Date
     : T extends object
       ? { [K in keyof T]: Serialized<T[K]> }
       : T
+
+export interface Group {
+  id: number
+  name: string
+  is_owner: boolean
+  can_vote: boolean
+}
+
+export interface Invitation {
+  group_id: number | null
+  groupName: string | null
+  expiresAt: Date
+}

@@ -3,6 +3,8 @@ import type { ApprovalStatus } from '../../models/entities.js'
 type Timestamp = ColumnType<Date, Date | undefined, Date>
 
 interface RoundTableDef {
+  started_at: Generated<Date | null>
+  group_id: Generated<number>
   week_start: string
   winner_id: Generated<number | null>
   drawn_by: Generated<number | null>
@@ -14,6 +16,7 @@ export interface RoundTable {
 }
 
 interface ResponseTableDef {
+  group_id: Generated<number>
   week_start: string
   user_id: number
   movie_id: number | null

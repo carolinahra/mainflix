@@ -15,6 +15,9 @@ test('the admin cannot vote or skip and old admin responses do not affect the fo
     "INSERT INTO users (username,password_hash,name,is_admin) VALUES ('admin','unused','Admin',true) RETURNING id",
   )
   assert.ok(admin)
+  await pool.query('INSERT INTO group_members (group_id,user_id,voting_from) VALUES (1,$1,NULL)', [
+    admin.id,
+  ])
   const a = await TestDatabase.movie('Voter film')
   const b = await TestDatabase.movie('Admin film')
   const rounds = TestDatabase.rounds(monday, () => 0)

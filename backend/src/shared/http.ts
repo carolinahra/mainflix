@@ -1,10 +1,11 @@
 import type { Request, Response } from 'express'
 import type { ParsedQs } from 'qs'
-import type { User, Language } from '../models/entities.js'
+import type { User, Language, Group } from '../models/entities.js'
+import type { Container } from '../container.js'
 import { z } from 'zod'
 import { AuthenticationRequiredException } from './exceptions/index.js'
 export type HttpRequest = Request<Record<string, string>, unknown, unknown, ParsedQs>
-export type HttpResponse = Response<unknown, { user?: User }>
+export type HttpResponse = Response<unknown, { user?: User; group?: Group; container?: Container }>
 export class Http {
   static readonly id = z.coerce.number().int().positive().max(2147483647)
   static readonly week = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)

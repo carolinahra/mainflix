@@ -12,6 +12,38 @@ export class UserRepository {
       .orderBy('id')
       .execute()
   }
+  async provisionMembership(
+    userId: number,
+    admin: boolean,
+    week: string,
+    db: Connection,
+  ): Promise<void> {
+    await this.database.lockGroup(db, 1)
+    const started = await db
+      .selectFrom('rounds')
+      .select('week_start')
+      .where('group_id', '=', 1)
+      .where('week_start', '=', week)
+      .where('started_at', 'is not', null)
+      .executeTakeFirst()
+    const next = new Date(`${week}T12:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 7)
+    await db
+      .insertInto('group_members')
+      .values({
+        group_id: 1,
+        user_id: userId,
+        voting_from: admin ? null : started ? next.toISOString().slice(0, 10) : week,
+      })
+      .execute()
+    if (admin)
+      await db
+        .updateTable('groups')
+        .set({ owner_id: userId })
+        .where('id', '=', 1)
+        .where('owner_id', 'is', null)
+        .execute()
+  }
   async create(
     email: string | null,
     username: string,

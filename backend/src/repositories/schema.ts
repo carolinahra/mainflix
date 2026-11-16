@@ -1,3 +1,4 @@
+import type { GroupTable } from '../shared/database-models/group.database-model.js'
 import type { Kysely, Transaction, Generated } from 'kysely'
 import type {
   UserTable,
@@ -8,7 +9,8 @@ import type {
 import type { MovieTable } from '../shared/database-models/movie.database-model.js'
 import type { RoundTable, ResponseTable } from '../shared/database-models/round.database-model.js'
 import type { WatchedTable, ReviewTable } from '../shared/database-models/review.database-model.js'
-export type Schema = UserTable &
+export type Schema = GroupTable &
+  UserTable &
   SessionTable &
   ResetTable &
   RateLimitTable &
