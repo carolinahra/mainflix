@@ -100,6 +100,76 @@ class BrowserFixture {
   }
 }
 
+test('creators manage groups and unimported TMDB cards show providers on desktop and iPhone SE', { timeout: 120_000 }, async () => {
+  const f = new BrowserFixture()
+  try {
+    await f.prepare()
+    for (const mobile of [false, true]) {
+      const page = await f.page(mobile)
+      await page.route('**/api/movies/browse?**', async route => {
+        const category = new URL(route.request().url()).searchParams.get('category')
+        await route.fulfill({ json: { local: [], remote: category === 'popular' ? [{ tmdb_id: 42, title: 'Unimported film', release_year: 2026, overview: '', poster_path: null }] : [], remoteError: null, page: 1, totalPages: 1 } })
+      })
+      await page.route('**/api/movies/providers/42', route => route.fulfill({ json: {
+        link: 'https://www.themoviedb.org/movie/42/watch?locale=ES',
+        flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/t2yyOv40HZeVlLjYsCsPHnWLk4W.jpg' }],
+        rent: [{ provider_id: 10, provider_name: 'Amazon Video', logo_path: '/seGSXajazLMCKGB5hnRCidtjay1.jpg' }],
+      } }))
+      await f.login(page, 'admin')
+      await page.locator('.group-toolbar').getByRole('button', { name: 'Switch group', exact: true }).click()
+      await page.getByRole('button', { name: 'Create new group', exact: true }).click()
+      const groupName = mobile ? 'Mobile group' : 'Desktop group'
+      await page.getByLabel('Group name', { exact: true }).fill(groupName)
+      await page.getByRole('button', { name: 'Create group', exact: true }).click()
+      await page.locator('.group-toolbar strong').getByText(groupName, { exact: true }).waitFor()
+      const group = await f.database.client.selectFrom('groups').select('id').where('name', '=', groupName).executeTakeFirstOrThrow()
+      const member = await f.database.client.selectFrom('users').select('id').where('username', '=', 'friend1').executeTakeFirstOrThrow()
+      await f.container.groupRepository.join(member.id, group.id, f.container.clock.weekKey(), f.database.client)
+      const card = page.locator('.movie-card[data-tmdb-id="42"]')
+      await card.scrollIntoViewIfNeeded()
+      await card.getByRole('img', { name: 'Netflix', exact: true }).waitFor()
+      assert.equal(await card.getByRole('heading', { name: 'Available at', exact: true }).count(), 1)
+      const size = await card.getByRole('img', { name: 'Netflix', exact: true }).boundingBox()
+      assert.equal(size?.width, 40)
+      assert.equal(size?.height, 40)
+      assert.equal((await f.database.client.selectFrom('movies').select('id').where('tmdb_id', '=', 42).execute()).length, 0)
+      await page.screenshot({ path: `/tmp/mainflix-catalogue-providers-${mobile ? 'iphone-se' : 'desktop'}.png` })
+      const guest = await f.page(mobile)
+      await f.login(guest, 'friend1')
+      await guest.locator('.group-toolbar').getByRole('button', { name: 'Switch group', exact: true }).click()
+      await guest.getByRole('button', { name: groupName, exact: true }).click()
+      await guest.locator('.group-toolbar strong').getByText(groupName, { exact: true }).waitFor()
+      assert.equal(await guest.getByRole('navigation', { name: 'Mainflix' }).getByRole('button', { name: 'Admin', exact: true }).count(), 0)
+      await page.getByRole('navigation', { name: 'Mainflix' }).getByRole('button', { name: 'Admin', exact: true }).click()
+      const settings = page.locator('section[aria-labelledby="group-settings"]')
+      await settings.getByText('@friend1', { exact: true }).waitFor()
+      await settings.getByLabel('Group name', { exact: true }).fill(`${groupName} renamed`)
+      await settings.getByRole('button', { name: 'Rename group', exact: true }).click()
+      await page.locator('.group-toolbar strong').getByText(`${groupName} renamed`, { exact: true }).waitFor()
+      await settings.getByRole('button', { name: 'Remove member', exact: true }).click()
+      await settings.getByRole('alert').waitFor()
+      await settings.getByRole('button', { name: 'Cancel', exact: true }).click()
+      assert.equal(await settings.getByText('@friend1', { exact: true }).count(), 1)
+      await settings.getByRole('button', { name: 'Remove member', exact: true }).click()
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+      await page.screenshot({ path: `/tmp/mainflix-group-settings-${mobile ? 'iphone-se' : 'desktop'}.png`, fullPage: true })
+      await settings.getByRole('button', { name: 'Confirm removal', exact: true }).click()
+      await settings.getByText('@friend1', { exact: true }).waitFor({ state: 'hidden' })
+      await guest.locator('.group-toolbar').waitFor({ state: 'hidden', timeout: 10000 })
+      await settings.getByRole('button', { name: 'Delete group', exact: true }).click()
+      await settings.getByRole('button', { name: 'Cancel', exact: true }).click()
+      assert.ok(await f.database.client.selectFrom('groups').select('id').where('id', '=', group.id).executeTakeFirst())
+      await settings.getByRole('button', { name: 'Delete group', exact: true }).click()
+      await settings.getByRole('button', { name: 'Permanently delete group', exact: true }).click()
+      await page.locator('.group-toolbar').waitFor({ state: 'hidden' })
+      assert.equal(await f.database.client.selectFrom('groups').select('id').where('id', '=', group.id).executeTakeFirst(), undefined)
+      assert.ok(await f.database.client.selectFrom('users').select('id').where('id', '=', member.id).executeTakeFirst())
+      await page.context().close()
+      await guest.context().close()
+    }
+  } finally { await f.close() }
+})
+
 test(
   'avatar menu fills its circle and header controls do not overlap at responsive sizes',
   { timeout: 60_000 },

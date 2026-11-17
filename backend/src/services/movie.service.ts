@@ -102,9 +102,11 @@ export class MovieService {
   }
   async watchProviders(id: number): Promise<MovieWatchProviders | null> {
     const movie = await this.find(id)
-    if (!movie.tmdb_id) return null
+    return movie.tmdb_id ? this.tmdbWatchProviders(movie.tmdb_id) : null
+  }
+  async tmdbWatchProviders(id: number): Promise<MovieWatchProviders | null> {
     try {
-      return await this.tmdb.watchProviders(movie.tmdb_id)
+      return await this.tmdb.watchProviders(id)
     } catch (error: unknown) {
       if (!(error instanceof AppException)) throw error
       return null

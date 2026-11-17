@@ -175,6 +175,42 @@ test('the weekly pick and movie dialog show subscription and rental icons with J
   assert.doesNotMatch(renderToStaticMarkup(app.render()), /Disponible en|JustWatch/)
 })
 
+test('unimported TMDB catalogue cards show platform logos without a nomination', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'catalogue',
+    user: { id: 1, name: 'Viewer', username: 'viewer', email: null, avatar: null, is_admin: false },
+    group: { id: 1, name: 'Group', is_owner: false, can_vote: true },
+    search: {
+      local: [],
+      remote: [
+        {
+          tmdb_id: 42,
+          title: 'Unimported film',
+          release_year: 2026,
+          overview: '',
+          poster_path: null,
+        },
+      ],
+      remoteError: null,
+    },
+    watchProviders: {
+      42: {
+        link: 'https://www.themoviedb.org/movie/42/watch?locale=ES',
+        flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/netflix.jpg' }],
+        rent: [],
+      },
+    },
+  }
+  const markup = renderToStaticMarkup(app.render())
+  assert.match(markup, /data-tmdb-id="42"/)
+  assert.match(markup, /Available at/)
+  assert.match(markup, /alt="Netflix"/)
+})
+
 test('opening a movie requests its description in the selected interface language', async (context) => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({
@@ -213,7 +249,7 @@ test('availability loads once per movie and delayed results cannot cross group c
       i18n: new I18n('en'),
       api: {
         request: async (path: string) => {
-          assert.equal(path, '/movies/1/providers')
+          assert.equal(path, '/movies/providers/1')
           return providers
         },
       },

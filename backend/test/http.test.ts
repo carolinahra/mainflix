@@ -95,6 +95,16 @@ test('movie availability keeps authentication and group scope and tolerates miss
   const cookie = await f.login('platforms', 'abcdef')
   const get = (id: number) => request(app).get(`/api/movies/${id}/providers`).set('Cookie', cookie)
   assert.deepEqual((await get(movie.id).expect(200)).body, providers)
+  await request(app).get('/api/movies/providers/42').expect(401)
+  assert.deepEqual(
+    (await request(app).get('/api/movies/providers/42').set('Cookie', cookie).expect(200)).body,
+    providers,
+  )
+  assert.equal(
+    (await TestDatabase.pool.query('SELECT count(*) FROM movies WHERE tmdb_id=42')).rows[0].count,
+    '0',
+  )
+  await request(app).get('/api/movies/providers/nope').set('Cookie', cookie).expect(400)
   assert.equal((await get(manual.id).expect(200)).body, null)
   await get(99999).expect(404)
   const group = await f.container.groupService.create(owner.id, 'Other group')
