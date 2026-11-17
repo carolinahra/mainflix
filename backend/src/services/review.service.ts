@@ -2,27 +2,23 @@ import type { ReviewRepository } from '../repositories/review.repository.js'
 import type { MovieRepository } from '../repositories/movie.repository.js'
 import type { Movie, MovieReviews, ReviewedMovie } from '../models/entities.js'
 import type { Clock } from './clock.js'
-import {
-  MovieNotFoundException,
-  MovieNotWatchedException,
-  InvalidReviewException,
-} from '../shared/exceptions/index.js'
+import { MovieNotFoundException, InvalidReviewException } from '../shared/exceptions/index.js'
 export class ReviewService {
   constructor(
     private readonly repository: ReviewRepository,
     private readonly movies: MovieRepository,
     private readonly clock: Clock,
   ) {}
-  async markWatched(userId: number, movieId: number): Promise<void> {
+  async markWatched(userId: number, movieId: number, watched = true): Promise<void> {
     const movie: Movie | undefined = await this.movies.find(movieId)
-    if (!movie || movie.approval_status !== 'approved') throw new MovieNotFoundException()
-    await this.repository.markWatched(userId, movieId)
+    if (!movie || (watched && movie.approval_status !== 'approved'))
+      throw new MovieNotFoundException()
+    await this.repository.markWatched(userId, movieId, watched)
   }
   async save(userId: number, movieId: number, rating: number, text: string): Promise<void> {
     if (!Number.isInteger(rating * 2) || rating < 0.5 || rating > 5 || text.length > 10000)
       throw new InvalidReviewException()
     if (!(await this.movies.find(movieId))) throw new MovieNotFoundException()
-    if (!(await this.repository.isWatched(userId, movieId))) throw new MovieNotWatchedException()
     await this.repository.save(userId, movieId, rating, text, this.clock.now())
   }
   async list(movieId: number, userId: number): Promise<MovieReviews> {

@@ -1,4 +1,6 @@
 import type { Database } from './database.js'
+import type { Connection } from './schema.js'
+import { MovieNotWatchedException } from '../shared/exceptions/index.js'
 import type { Movie, MovieReviews, ReviewedMovie } from '../models/entities.js'
 export class ReviewRepository {
   constructor(
@@ -37,15 +39,35 @@ export class ReviewRepository {
       .orderBy('m.id', 'desc')
       .execute()
   }
-  async markWatched(userId: number, movieId: number): Promise<void> {
+  async markWatched(userId: number, movieId: number, watched = true): Promise<void> {
+    if (!watched) {
+      await this.database.transaction(async (db) => {
+        await this.database.lockGroup(db, this.groupId)
+        await db
+          .deleteFrom('reviews')
+          .where('user_id', '=', userId)
+          .where('movie_id', '=', movieId)
+          .execute()
+        await db
+          .deleteFrom('user_watched_movies')
+          .where('user_id', '=', userId)
+          .where('movie_id', '=', movieId)
+          .execute()
+      })
+      return
+    }
     await this.database.client
       .insertInto('user_watched_movies')
       .values({ user_id: userId, movie_id: movieId })
       .onConflict((oc) => oc.columns(['user_id', 'movie_id']).doNothing())
       .execute()
   }
-  async isWatched(userId: number, movieId: number): Promise<boolean> {
-    return !!(await this.database.client
+  async isWatched(
+    userId: number,
+    movieId: number,
+    db: Connection = this.database.client,
+  ): Promise<boolean> {
+    return !!(await db
       .selectFrom('user_watched_movies')
       .select('user_id')
       .where('user_id', '=', userId)
@@ -59,13 +81,17 @@ export class ReviewRepository {
     text: string,
     now: Date,
   ): Promise<void> {
-    await this.database.client
-      .insertInto('reviews')
-      .values({ user_id: userId, movie_id: movieId, rating, text, updated_at: now })
-      .onConflict((oc) =>
-        oc.columns(['user_id', 'movie_id']).doUpdateSet({ rating, text, updated_at: now }),
-      )
-      .execute()
+    await this.database.transaction(async (db) => {
+      await this.database.lockGroup(db, this.groupId)
+      if (!(await this.isWatched(userId, movieId, db))) throw new MovieNotWatchedException()
+      await db
+        .insertInto('reviews')
+        .values({ user_id: userId, movie_id: movieId, rating, text, updated_at: now })
+        .onConflict((oc) =>
+          oc.columns(['user_id', 'movie_id']).doUpdateSet({ rating, text, updated_at: now }),
+        )
+        .execute()
+    })
   }
   async list(movieId: number, userId: number): Promise<MovieReviews> {
     const reviews = await this.database.client

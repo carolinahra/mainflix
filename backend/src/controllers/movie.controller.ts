@@ -21,6 +21,7 @@ export class MovieController {
     this.router.get('/:id', this.detail.bind(this))
     this.router.get('/:id/providers', this.watchProviders.bind(this))
     this.router.put('/:id/watched', this.watched.bind(this))
+    this.router.delete('/:id/watched', this.watched.bind(this))
     this.router.put('/:id/review', this.review.bind(this))
     this.router.put('/:id/favorite', this.favorite.bind(this))
     this.router.delete('/:id/favorite', this.favorite.bind(this))
@@ -109,7 +110,11 @@ export class MovieController {
     z.object({})
       .strict()
       .parse(req.body ?? {})
-    await this.reviews.markWatched(Http.user(res).id, Http.id.parse(req.params.id))
+    await this.reviews.markWatched(
+      Http.user(res).id,
+      Http.id.parse(req.params.id),
+      req.method === 'PUT',
+    )
     res.sendStatus(204)
   }
   private async review(req: HttpRequest, res: HttpResponse): Promise<void> {

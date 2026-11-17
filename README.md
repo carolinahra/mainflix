@@ -89,6 +89,7 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 - Losing nominations do not carry over, but their movies stay in the catalogue.
 - TMDB imports and manual additions are immediately eligible for nomination. Manual additions are the fallback for films missing from TMDB. Existing rejected/excluded films stay blocked; group owners can still manage metadata and eligibility or resolve older pending entries.
 - Each user can mark any approved catalogue movie personally watched, including movies seen before Mainflix; doing so does not remove eligibility. One editable review per user/movie, 0.5–5 diamonds in half-point steps and optional text. Viewing progress is required to review, and survives reselection. The Reviews tab groups everyone’s diamond ratings and text by movie, with recently reviewed movies first.
+- **Mark as unwatched** removes your personal watched mark. If you already reviewed the movie, confirmation is required before your rating and review are removed too. Other people's reviews, favorites, nominations and saved winners stay unchanged.
 - The home page’s **To be reviewed** section keeps past weekly selections visible until every voting member in that group has rated them. Observer ratings do not count toward completion; the current weekly movie keeps its existing card.
 - Friends’ ratings and review text for weekly selections stay hidden in movie details and the Reviews tab until you submit your own rating for that movie. Marking it watched alone does not unlock reviews. This also applies to past selections and observers; non-selected catalogue movies keep shared reviews.
 - Old rounds/reviews persist. No cron task is needed: the API determines the current round from server time on each request; the frontend refreshes every five seconds while visible.
@@ -151,6 +152,7 @@ All routes except health, login, reset, logout, invitation preview and invitatio
 | POST | `/api/movies?language=es` | `{tmdbId}` or `{title,releaseYear?}` → approved movie |
 | GET | `/api/movies/:id` | Movie, personal watched records and reviews; weekly selections return `reviews: []` and `reviewsLocked: true` until you review them |
 | PUT | `/api/movies/:id/watched` | `{}` → mark your viewing progress |
+| DELETE | `/api/movies/:id/watched` | `{}` → remove your watched mark and your review atomically |
 | PUT | `/api/movies/:id/review` | `{rating,text?}` → create/edit your review |
 | GET | `/api/admin/movies/pending` | Pending movies; supports limit/offset |
 | PATCH | `/api/admin/movies/:id` | Any of `{title,releaseYear,overview,tmdbId,approvalStatus,eligible}` |

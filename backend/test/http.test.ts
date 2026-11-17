@@ -232,6 +232,45 @@ test('previous weekly selections stay to be reviewed until every voter rates the
   assert.deepEqual((await list()).body, [])
 })
 
+test('unmarking a watched movie removes only the callers review and watching record', async () => {
+  const f = new HttpFixture()
+  const first = await f.container.userService.create(null, 'unwatch', 'Unwatch', 'abcdef')
+  const second = await f.container.userService.create(null, 'otherwatch', 'Other', 'abcdef')
+  const movie = await TestDatabase.movie('Unwatch me')
+  for (const user of [first, second]) {
+    await f.container.reviewService.markWatched(user.id, movie.id)
+    await f.container.reviewService.save(user.id, movie.id, 4, 'A review')
+  }
+  await f.container.movieService.favorite(first.id, movie.id, true)
+  const cookie = await f.login('unwatch', 'abcdef')
+  const remove = (id: number) =>
+    request(f.container.application.app)
+      .delete(`/api/movies/${id}/watched`)
+      .set('Origin', f.container.config.origin)
+      .set('Cookie', cookie)
+      .send({})
+  await request(f.container.application.app)
+    .delete(`/api/movies/${movie.id}/watched`)
+    .set('Origin', f.container.config.origin)
+    .send({})
+    .expect(401)
+  await remove(99999).expect(404)
+  await remove(movie.id).expect(204)
+  await remove(movie.id).expect(204)
+  assert.deepEqual(
+    (await f.container.reviewService.list(movie.id, second.id)).reviews.map((r) => r.user_id),
+    [second.id],
+  )
+  assert.equal(await f.container.reviewRepository.isWatched(first.id, movie.id), false)
+  assert.equal(await f.container.reviewRepository.isWatched(second.id, movie.id), true)
+  assert.equal(await f.container.movieService.isFavorite(first.id, movie.id), true)
+  await assert.rejects(f.container.reviewService.save(first.id, movie.id, 3, ''), {
+    code: 'MOVIE_NOT_WATCHED',
+  })
+  await f.container.reviewService.markWatched(first.id, movie.id)
+  assert.equal(await f.container.reviewRepository.isWatched(first.id, movie.id), true)
+})
+
 test('profiles edit only the signed-in user and preserve sessions and username uniqueness', async () => {
   const f = new HttpFixture()
   const app = f.container.application.app

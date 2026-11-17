@@ -29,6 +29,7 @@ interface Props {
   container: Container
 }
 interface State {
+  unmarkingWatched: boolean
   groupMembers: Member[]
   groupAction: { type: 'delete' } | { type: 'kick'; member: Member } | null
   creatingGroup: boolean
@@ -87,6 +88,7 @@ export class Mainflix extends Component<Props, State> {
   private searchController: AbortController | undefined
   private readonly browseControllers = new Map<MovieCategory, AbortController>()
   override state: State = {
+    unmarkingWatched: false,
     groupMembers: [],
     groupAction: null,
     creatingGroup: false,
@@ -453,6 +455,7 @@ export class Mainflix extends Component<Props, State> {
     this.surveyDialog.current?.close()
     this.setState({
       user: null,
+      unmarkingWatched: false,
       groupMembers: [],
       groupAction: null,
       error: null,
@@ -1579,18 +1582,29 @@ export class Mainflix extends Component<Props, State> {
   }
   private closeDetail(): void {
     this.dialog.current?.close()
-    this.setState({ detail: null })
+    this.setState({ detail: null, unmarkingWatched: false })
   }
-  private watched(): void {
+  private watched(watched: boolean): void {
     const id: number | undefined = this.state.detail?.movie.id
     if (!id) return
     void this.perform(async (): Promise<void> => {
-      await this.props.container.api.request(`/movies/${id}/watched`, 'PUT', {})
-      this.setState({
-        detail: await this.props.container.api.request<Detail>(
-          `/movies/${id}?language=${this.state.language}`,
-        ),
-      })
+      await this.props.container.api.request(
+        `/movies/${id}/watched`,
+        watched ? 'PUT' : 'DELETE',
+        {},
+      )
+      const detail = await this.props.container.api.request<Detail>(
+        `/movies/${id}?language=${this.state.language}`,
+      )
+      this.setState((state) => ({
+        detail,
+        unmarkingWatched: false,
+        myReviews: watched
+          ? state.myReviews
+          : state.myReviews.filter((entry) => entry.movie.id !== id),
+      }))
+      if (!watched && this.state.tab === 'reviews') await this.loadReviews(false)
+      if (!watched && this.state.tab === 'week') await this.refreshRound()
     })
   }
   private review(event: FormEvent<HTMLFormElement>): void {
@@ -2600,10 +2614,30 @@ export class Mainflix extends Component<Props, State> {
         <p>
           {this.t('watchedBy')}: {watched.map((w) => w.name).join(', ') || '—'}
         </p>
-        {!seen && movie.approval_status === 'approved' && (
-          <button disabled={this.state.busy} onClick={this.watched.bind(this)}>
-            {this.t('watched')}
+        {(seen || movie.approval_status === 'approved') && (
+          <button
+            disabled={this.state.busy}
+            onClick={() => {
+              if (seen && mine) this.setState({ unmarkingWatched: true })
+              else this.watched(!seen)
+            }}
+          >
+            {this.t(seen ? 'unmarkWatched' : 'watched')}
           </button>
+        )}
+        {this.state.unmarkingWatched && (
+          <div className="notice" role="alert">
+            <p>{this.t('unmarkWatchedWarning')}</p>
+            <button disabled={this.state.busy} onClick={() => this.watched(false)}>
+              {this.t('confirmUnmarkWatched')}
+            </button>
+            <button
+              disabled={this.state.busy}
+              onClick={() => this.setState({ unmarkingWatched: false })}
+            >
+              {this.t('cancel')}
+            </button>
+          </div>
         )}
         <button
           disabled={this.state.busy}
