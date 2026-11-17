@@ -231,6 +231,6 @@ npm run dev:frontend
 CHROME_PATH=/usr/bin/google-chrome npm run test:e2e --workspace frontend
 ```
 
-Alternatively, install Playwright's Chromium with `npx playwright install chromium` and omit `CHROME_PATH`. Screenshots are written under `/tmp/mainflix-*.png`. E2E tests provision disposable `friend1@example.com` through `friend4@example.com` voting profiles and a separate `admin@example.com` account, with the password `Browser test password!`. Never use these credentials in production.
+Alternatively, install Playwright's Chromium and WebKit with `npx playwright install chromium webkit` and omit `CHROME_PATH`. WebKit is also required when using installed Chrome: the mobile profile-menu regression runs in both engines. Linux needs Playwright's WebKit system libraries. Screenshots are written under `/tmp/mainflix-*.png`. E2E tests provision disposable `friend1@example.com` through `friend4@example.com` voting profiles and a separate `admin@example.com` account, with the password `Browser test password!`. Never use these credentials in production.
 
 Local demo captures are in `docs/previews/desktop.png`, `iphone-se.png`, `iphone-se-viewport.png`, and `iphone-se-movie.png`. They contain disposable sample data, not real accounts or reviews.

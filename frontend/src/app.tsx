@@ -2797,7 +2797,12 @@ export class Mainflix extends Component<Props, State> {
   override render(): ReactNode {
     return (
       <>
-        <header>
+        <header
+          onPointerDown={(event) => {
+            const menu = this.profileMenu.current
+            if (!menu?.contains(event.target as Node)) menu?.removeAttribute('open')
+          }}
+        >
           <a className="brand" href="/">
             <img src="/art/mainflix-mark.webp" alt="" width="64" height="64" />
             MAIN<span>FLIX</span>
@@ -2841,10 +2846,6 @@ export class Mainflix extends Component<Props, State> {
             <details
               className="profile-menu"
               ref={this.profileMenu}
-              onBlur={(event) => {
-                if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget))
-                  event.currentTarget.removeAttribute('open')
-              }}
               onKeyDown={(event) => {
                 if (event.key === 'Escape') {
                   event.preventDefault()
