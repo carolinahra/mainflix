@@ -137,6 +137,8 @@ export class GroupRepository {
     now: Date,
     db: Connection,
   ): Promise<{ group_id: number | null } | undefined> {
+    const invite = await this.invitation(hash, now, db)
+    if (invite && invite.group_id !== null) return invite
     return db
       .deleteFrom('invitations')
       .where('token_hash', '=', hash)

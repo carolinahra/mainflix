@@ -299,11 +299,13 @@ test('named groups and app-only signup keep a new account out of the inviter gro
   assert.equal(own.name, 'Friends')
 })
 
-test('group invites are owner-only, expire, are consumed once, and support existing accounts', async () => {
+test('group invites are owner-only, reusable by existing accounts, and expire', async () => {
   const f = new GroupsFixture()
   const { cookie, group } = await f.owner()
   await f.container.userService.create(null, 'guest', 'Guest', 'abcdef')
+  await f.container.userService.create(null, 'other_guest', 'Other guest', 'abcdef')
   const guest = await f.login('guest')
+  const otherGuest = await f.login('other_guest')
   await f.call('post', '/invitations', guest, undefined, { groupId: group.id }).expect(403)
   const invite = (
     await f.call('post', '/invitations', cookie, undefined, { groupId: group.id }).expect(201)
@@ -312,17 +314,34 @@ test('group invites are owner-only, expire, are consumed once, and support exist
   const preview = (await f.call('get', `/invitations/${token}`).expect(200)).body
   assert.equal(preview.groupName, 'Family')
   const results = await Promise.all(
-    [1, 2].map(() => f.call('post', `/invitations/${token}/accept`, guest, undefined, {})),
+    [guest, otherGuest].map((member) =>
+      f.call('post', `/invitations/${token}/accept`, member, undefined, {}),
+    ),
   )
-  assert.deepEqual(results.map((r) => r.status).sort(), [200, 400])
-  assert.ok(
-    (await f.call('get', '/groups', guest)).body.some((g: { id: number }) => g.id === group.id),
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [200, 200],
   )
-  const expired = (
-    await f.call('post', '/invitations', cookie, undefined, { groupId: group.id }).expect(201)
-  ).body.url.split('#invite=')[1]
+  for (const member of [guest, otherGuest])
+    assert.ok(
+      (await f.call('get', '/groups', member)).body.some((g: { id: number }) => g.id === group.id),
+    )
+  await f.call('post', `/invitations/${token}/accept`, guest, undefined, {}).expect(200)
+  assert.equal(
+    (await f.call('get', `/groups/${group.id}/members`, cookie).expect(200)).body.length,
+    3,
+  )
+  await f.call('get', `/invitations/${token}`).expect(200)
   f.now = new Date('2026-11-24T12:00Z')
-  await f.call('get', `/invitations/${expired}`).expect(400)
+  await f.call('get', `/invitations/${token}`).expect(400)
+  await f.call('post', `/invitations/${token}/accept`, guest, undefined, {}).expect(400)
+  await f
+    .call('post', '/auth/register', undefined, undefined, {
+      token,
+      username: 'expired_guest',
+      password: 'abcdef',
+    })
+    .expect(400)
 })
 
 test('groups isolate catalogues, reviews, nominations and draws; owners can vote', async () => {
@@ -385,7 +404,7 @@ test('joining after the first response defers voting until the next Madrid week'
   assert.equal((await f.call('get', '/rounds/current', guest, group.id)).body.members.length, 2)
 })
 
-test('failed signup preserves its invitation and successful concurrent signup creates one account', async () => {
+test('failed signup preserves its group invitation and concurrent signups can reuse it', async () => {
   const f = new GroupsFixture()
   const { cookie, group } = await f.owner()
   const token = (
@@ -408,16 +427,42 @@ test('failed signup preserves its invitation and successful concurrent signup cr
       }),
     ),
   )
-  assert.deepEqual(results.map((r) => r.status).sort(), [201, 400])
-  const winner = results.find((r) => r.status === 201)!
-  const memberCookie = winner.headers['set-cookie']![0]!.split(';')[0]!
   assert.deepEqual(
-    (await f.call('get', '/groups', memberCookie).expect(200)).body.map(
-      (g: { id: number }) => g.id,
-    ),
-    [group.id],
+    results.map((r) => r.status),
+    [201, 201],
   )
-  assert.equal((await f.call('get', '/rounds/current', cookie, group.id)).body.members.length, 2)
+  for (const result of results) {
+    const memberCookie = result.headers['set-cookie']![0]!.split(';')[0]!
+    assert.deepEqual(
+      (await f.call('get', '/groups', memberCookie).expect(200)).body.map(
+        (g: { id: number }) => g.id,
+      ),
+      [group.id],
+    )
+  }
+  await f.call('get', `/invitations/${token}`).expect(200)
+  const existing = await f.login('signup_one')
+  await f.call('post', `/invitations/${token}/accept`, existing, undefined, {}).expect(200)
+  assert.equal((await f.call('get', '/rounds/current', cookie, group.id)).body.members.length, 3)
+})
+
+test('app-only invitations remain single-use under concurrent signup', async () => {
+  const f = new GroupsFixture()
+  const { cookie } = await f.owner()
+  const token = (
+    await f.call('post', '/invitations', cookie, undefined, {}).expect(201)
+  ).body.url.split('#invite=')[1]
+  const results = await Promise.all(
+    ['signup_one', 'signup_two'].map((username) =>
+      f.call('post', '/auth/register', undefined, undefined, {
+        token,
+        username,
+        password: 'abcdef',
+      }),
+    ),
+  )
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 400])
+  await f.call('get', `/invitations/${token}`).expect(400)
 })
 
 test('personal favorites and own reviews span groups without exposing other users activity', async () => {
