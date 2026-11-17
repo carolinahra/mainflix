@@ -481,6 +481,351 @@ progress::-moz-progress-bar {
 .genre-picker {
   max-width: 320px;
 }
+.catalogue-page {
+  max-width: 1480px;
+  padding: 0;
+}
+.catalogue-page > .group-toolbar {
+  padding: 16px 32px;
+  margin: 0;
+  border-bottom: 1px solid #ffffff0b;
+}
+.catalogue-layout {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  font-family: system-ui, sans-serif;
+}
+.catalogue-sidebar {
+  padding: 29px 17px 30px 23px;
+  border-right: 1px solid #ffffff0b;
+  position: sticky;
+  top: 85px;
+  height: calc(100dvh - 85px);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3b4540 transparent;
+}
+.catalogue-sidebar h2 {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 15px 12px;
+  font-weight: 550;
+}
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.category-group {
+  margin: 21px 0 7px 12px;
+  color: #717a86;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+.category-button {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 12px;
+  color: #a8afb8;
+  font-weight: 450;
+  line-height: 1.4;
+}
+.category-button:hover:not(:disabled) {
+  background: #ffffff05;
+}
+.category-button[aria-current] {
+  background: #a4ee5711;
+  color: var(--green);
+  border-color: #a4ee5726;
+}
+.category-symbol {
+  width: 15px;
+  font-size: 15px;
+  text-align: center;
+  opacity: 0.8;
+  flex: none;
+}
+.catalogue-library {
+  padding: 34px 33px 50px;
+  min-width: 0;
+}
+.catalogue-kicker {
+  font-size: 10px;
+  color: var(--green);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin: 0 0 9px;
+}
+.catalogue-heading {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 26px;
+}
+.catalogue-heading h1 {
+  font-size: 30px;
+  letter-spacing: -1px;
+  line-height: 1.2;
+  margin: 0 0 9px;
+  font-weight: 650;
+}
+.catalogue-heading p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.catalogue-search {
+  border: 1px solid #3a4047;
+  border-radius: 10px;
+  background: #191c20;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  min-height: 44px;
+  width: 280px;
+  flex: none;
+  color: #a0a9b4;
+}
+.catalogue-search svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  flex: none;
+}
+.catalogue-search input {
+  border: 0;
+  outline: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  width: 100%;
+  font-size: 12px;
+  min-height: 42px;
+}
+.catalogue-search:focus-within {
+  border-color: var(--green);
+}
+.catalogue-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.catalogue-filters {
+  display: flex;
+  gap: 7px;
+}
+.catalogue-filters button {
+  min-height: 36px;
+  border: 1px solid #34383e;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 14px;
+  font-size: 11px;
+}
+.catalogue-filters button[aria-pressed='true'] {
+  background: #a4ee5715;
+  color: var(--green);
+  border-color: #a4ee5740;
+}
+.catalogue-count {
+  font-size: 11px;
+  color: #919ba8;
+}
+.catalogue-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 21px 15px;
+  margin-bottom: 20px;
+}
+.catalogue-grid .movie-card {
+  align-self: start;
+}
+.catalogue-empty {
+  padding: 50px 20px;
+  border: 1px dashed #3e454e;
+  border-radius: 14px;
+  text-align: center;
+  grid-column: 1/-1;
+}
+.catalogue-empty h2 {
+  font-size: 18px;
+}
+.catalogue-empty p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.catalogue-empty button {
+  background: var(--green);
+  color: #15220a;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 15px;
+  font-size: 12px;
+}
+.mobile-category-trigger {
+  display: none;
+}
+.category-drawer {
+  padding: 0;
+  margin: 0;
+  inset: 0 auto 0 0;
+  width: 295px;
+  max-width: calc(100vw - 35px);
+  height: 100dvh;
+  max-height: 100dvh;
+  border: 0;
+  border-right: 1px solid #3c444c;
+  border-radius: 0;
+  background: #15181c;
+  font-family: system-ui, sans-serif;
+}
+.category-drawer::backdrop {
+  background: #000b;
+  backdrop-filter: blur(3px);
+}
+.category-drawer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 18px 10px;
+}
+.category-drawer-heading h2 {
+  font-size: 19px;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+.category-drawer-heading button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #3b434e;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 23px;
+}
+.category-drawer .category-list {
+  padding: 0 15px calc(30px + env(safe-area-inset-bottom));
+}
+.category-drawer .category-button {
+  font-size: 13px;
+}
+@media (min-width: 1440px) {
+  .catalogue-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1150px) {
+  .catalogue-layout {
+    grid-template-columns: 205px minmax(0, 1fr);
+  }
+  .catalogue-library {
+    padding: 30px 24px;
+  }
+  .catalogue-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .catalogue-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 19px;
+  }
+  .catalogue-search {
+    width: 100%;
+  }
+  .catalogue-heading h1 {
+    font-size: 28px;
+  }
+}
+@media (max-width: 1100px) {
+  .catalogue-sidebar {
+    top: 140px;
+    height: calc(100dvh - 140px);
+  }
+}
+@media (max-width: 760px) {
+  .catalogue-page > .group-toolbar {
+    padding: 16px;
+  }
+  .catalogue-layout {
+    display: block;
+  }
+  .catalogue-sidebar {
+    display: none;
+  }
+  .catalogue-library {
+    padding: 25px 16px 35px;
+  }
+  .catalogue-heading {
+    margin-bottom: 20px;
+    gap: 20px;
+  }
+  .catalogue-heading h1 {
+    font-size: 27px;
+  }
+  .catalogue-heading p {
+    font-size: 11px;
+  }
+  .catalogue-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 15px 11px;
+  }
+  .catalogue-toolbar {
+    flex-wrap: wrap;
+    gap: 13px;
+  }
+  .mobile-category-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #414850;
+    background: #1b1e22;
+    border-radius: 9px;
+    padding: 0 13px;
+    font-size: 12px;
+    min-height: 44px;
+  }
+  .mobile-category-trigger svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+  }
+  .catalogue-filters {
+    order: 3;
+    width: 100%;
+  }
+  .catalogue-filters button {
+    min-height: 44px;
+  }
+  .catalogue-count {
+    font-size: 10px;
+  }
+}
 .movie-card {
   min-width: 0;
   display: flex;

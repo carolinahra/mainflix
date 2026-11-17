@@ -50,6 +50,8 @@ interface State {
   browse: Partial<Record<MovieCategory, Serialized<MovieBrowse>>>
   browseLoading: Partial<Record<MovieCategory, boolean>>
   genre: MovieCategory
+  catalogueCategory: MovieCategory | 'all'
+  catalogueFilter: 'all' | 'pending' | 'watched'
   query: string
   detail: Detail | null
   watchProviders: Record<number, MovieWatchProviders | null>
@@ -82,6 +84,7 @@ export class Mainflix extends Component<Props, State> {
   private readonly randomDialog = createRef<HTMLDialogElement>()
   private readonly roulette = createRef<HTMLDivElement>()
   private readonly surveyDialog = createRef<HTMLDialogElement>()
+  private readonly catalogueDialog = createRef<HTMLDialogElement>()
   private poll: ReturnType<typeof setInterval> | undefined
   private debounce: ReturnType<typeof setTimeout> | undefined
   private errorTimer: ReturnType<typeof setTimeout> | undefined
@@ -110,6 +113,8 @@ export class Mainflix extends Component<Props, State> {
     browse: {},
     browseLoading: {},
     genre: 'action',
+    catalogueCategory: 'all',
+    catalogueFilter: 'all',
     query: '',
     detail: null,
     watchProviders: {},
@@ -484,6 +489,7 @@ export class Mainflix extends Component<Props, State> {
     this.dialog.current?.close()
     this.randomDialog.current?.close()
     this.surveyDialog.current?.close()
+    this.catalogueDialog.current?.close()
     this.setState({
       user: null,
       leavingGroup: false,
@@ -502,6 +508,8 @@ export class Mainflix extends Component<Props, State> {
       browse: {},
       browseLoading: {},
       genre: 'action',
+      catalogueCategory: 'all',
+      catalogueFilter: 'all',
       history: [],
       reviewed: [],
       myReviews: [],
@@ -894,6 +902,11 @@ export class Mainflix extends Component<Props, State> {
       'popular',
       this.state.genre,
     ]
+    if (
+      this.state.catalogueCategory !== 'all' &&
+      !categories.includes(this.state.catalogueCategory)
+    )
+      categories.push(this.state.catalogueCategory)
     categories.forEach((category) => {
       void this.loadBrowse(category)
     })
@@ -1679,6 +1692,7 @@ export class Mainflix extends Component<Props, State> {
       }))
       if (!watched && this.state.tab === 'reviews') await this.loadReviews(false)
       if (!watched && this.state.tab === 'week') await this.refreshRound()
+      if (this.state.tab === 'catalogue') await this.search(this.state.query)
     })
   }
   private review(event: FormEvent<HTMLFormElement>): void {
@@ -2067,6 +2081,230 @@ export class Mainflix extends Component<Props, State> {
         </label>
         {this.renderBrowseRow(this.state.genre)}
       </div>
+    )
+  }
+  private renderCatalogue(): ReactNode {
+    const { catalogueCategory: category, catalogueFilter: filter } = this.state
+    const categories: MovieCategory[] = [
+      'popular',
+      'featured',
+      'recentlyAdded',
+      'newReleases',
+      'christmas',
+      'barbie',
+      'romanticComedy',
+      'animation',
+      'action',
+      'scienceFiction',
+      'drama',
+      'thriller',
+      'horror',
+      'comedy',
+      'adventure',
+      'fantasy',
+      'romance',
+    ]
+    const selectCategory = (category: MovieCategory | 'all'): void => {
+      this.setState({ catalogueCategory: category })
+      this.catalogueDialog.current?.close()
+      if (category !== 'all' && !this.state.browse[category]) void this.loadBrowse(category)
+    }
+    const categoryList = (): ReactNode => (
+      <>
+        <button
+          className="category-button"
+          aria-current={category === 'all' ? 'true' : undefined}
+          onClick={() => selectCategory('all')}
+        >
+          <span className="category-symbol" aria-hidden="true">
+            ▦
+          </span>
+          {this.t('catalogueAll')}
+        </button>
+        {categories.map((entry, index) => (
+          <div key={entry}>
+            {(index === 0 || index === 8) && (
+              <p className="category-group">{this.t(index === 0 ? 'discover' : 'genres')}</p>
+            )}
+            <button
+              className="category-button"
+              aria-current={category === entry ? 'true' : undefined}
+              onClick={() => selectCategory(entry)}
+            >
+              <span className="category-symbol" aria-hidden="true">
+                {index < 8 ? '✧' : '·'}
+              </span>
+              {this.t(entry)}
+            </button>
+          </div>
+        ))}
+      </>
+    )
+    const browse = category === 'all' ? undefined : this.state.browse[category]
+    const result = category === 'all' ? this.state.search : browse
+    const local = result?.local ?? []
+    const remote = (result?.remote ?? []).filter(
+      (movie) => !local.some((entry) => entry.tmdb_id === movie.tmdb_id),
+    )
+    const query = this.state.query
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+    const movies = [...local, ...remote].filter((movie) => {
+      const watched = 'id' in movie && (this.state.search.watched ?? []).includes(movie.id)
+      return (
+        (filter === 'all' || (filter === 'watched') === watched) &&
+        movie.title
+          .normalize('NFD')
+          .replace(/\p{Diacritic}/gu, '')
+          .toLowerCase()
+          .includes(query)
+      )
+    })
+    const loading = category !== 'all' && this.state.browseLoading[category]
+    return (
+      <section className="catalogue-layout" aria-labelledby="catalogue-title">
+        <aside className="catalogue-sidebar" aria-label={this.t('categories')}>
+          <h2>{this.t('explore')}</h2>
+          <div className="category-list">{categoryList()}</div>
+        </aside>
+        <div className="catalogue-library" id="movie-catalogue">
+          <p className="catalogue-kicker">{this.t('catalogueEyebrow')}</p>
+          <div className="catalogue-heading">
+            <div>
+              <h1 id="catalogue-title">{this.t(category === 'all' ? 'catalogueAll' : category)}</h1>
+              <p>{this.t('catalogueDescription')}</p>
+            </div>
+            <label className="catalogue-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="10" cy="10" r="6" />
+                <path d="m15 15 5 5" />
+              </svg>
+              <input
+                type="search"
+                aria-label={this.t('search')}
+                placeholder={this.t('catalogueSearchHint')}
+                value={this.state.query}
+                onChange={this.searchChanged.bind(this)}
+              />
+            </label>
+          </div>
+          <div className="catalogue-toolbar">
+            <button
+              className="mobile-category-trigger"
+              aria-haspopup="dialog"
+              aria-controls="catalogue-categories"
+              onClick={() => this.catalogueDialog.current?.showModal()}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5h16M4 12h16M4 19h16M9 2v6M15 9v6M9 16v6" />
+              </svg>
+              {this.t('categories')}
+            </button>
+            <div className="catalogue-filters">
+              {(['all', 'pending', 'watched'] as const).map((value) => (
+                <button
+                  key={value}
+                  aria-pressed={filter === value}
+                  onClick={() => this.setState({ catalogueFilter: value })}
+                >
+                  {this.t(
+                    value === 'all'
+                      ? 'allMovies'
+                      : value === 'pending'
+                        ? 'unwatchedMovies'
+                        : 'watchedMovies',
+                  )}
+                </button>
+              ))}
+            </div>
+            <span className="catalogue-count" aria-live="polite">
+              {movies.length} {this.t('moviesShown')}
+            </span>
+          </div>
+          {loading && (
+            <p role="status" className="muted">
+              {this.t('loading')}
+            </p>
+          )}
+          {result?.remoteError && (
+            <p role="status" className="muted">
+              {category === 'all'
+                ? this.t(
+                    result.remoteError === 'TMDB_NOT_CONFIGURED'
+                      ? 'TMDB_NOT_CONFIGURED'
+                      : 'tmdbWarning',
+                  )
+                : this.props.container.i18n.error(result.remoteError)}
+            </p>
+          )}
+          <div className="catalogue-grid">
+            {movies.map((movie) =>
+              'id' in movie ? this.renderCard(movie) : this.renderRemoteCard(movie),
+            )}
+            {!movies.length && !loading && (
+              <div className="catalogue-empty">
+                <h2>{this.t('noMovies')}</h2>
+                <p>{this.t('catalogueEmpty')}</p>
+                <button
+                  onClick={() => {
+                    this.setState({
+                      catalogueCategory: 'all',
+                      catalogueFilter: 'all',
+                      query: '',
+                    })
+                    void this.search('')
+                  }}
+                >
+                  {this.t('catalogueReset')}
+                </button>
+              </div>
+            )}
+          </div>
+          {category === 'all'
+            ? this.state.search.local.length >= 30 && (
+                <button
+                  disabled={this.state.busy}
+                  onClick={() => void this.search(this.state.query, true)}
+                >
+                  {this.t('more')}
+                </button>
+              )
+            : browse &&
+              (browse.remoteError || browse.page < browse.totalPages) && (
+                <button
+                  disabled={loading}
+                  onClick={() => void this.loadBrowse(category, !browse.remoteError)}
+                >
+                  {this.t(browse.remoteError ? 'retry' : 'more')}
+                </button>
+              )}
+        </div>
+        <dialog
+          id="catalogue-categories"
+          className="category-drawer"
+          ref={this.catalogueDialog}
+          aria-labelledby="category-drawer-title"
+          onClick={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              event.clientX > event.currentTarget.getBoundingClientRect().right
+            )
+              event.currentTarget.close()
+          }}
+        >
+          <div className="category-drawer-heading">
+            <h2 id="category-drawer-title">{this.t('categories')}</h2>
+            <button
+              aria-label={this.t('close')}
+              onClick={() => this.catalogueDialog.current?.close()}
+            >
+              ×
+            </button>
+          </div>
+          <div className="category-list">{categoryList()}</div>
+        </dialog>
+      </section>
     )
   }
   private renderSearch(): ReactNode {
@@ -3042,7 +3280,9 @@ export class Mainflix extends Component<Props, State> {
           className={
             this.state.user && this.state.tab === 'week' && !this.state.resetToken
               ? 'week-page'
-              : undefined
+              : this.state.user && this.state.group && this.state.tab === 'catalogue'
+                ? 'catalogue-page'
+                : undefined
           }
         >
           {!this.state.detail &&
@@ -3107,27 +3347,21 @@ export class Mainflix extends Component<Props, State> {
                 </section>
               )}
               {this.renderInvitationLink()}
-              {this.state.tab === 'week' ? (
-                this.renderWeek()
-              ) : this.state.tab === 'catalogue' ? (
-                <>
-                  {this.renderBrowseRow('popular')}
-                  {this.renderSearch()}
-                  {this.renderDiscovery()}
-                </>
-              ) : this.state.tab === 'favorites' ? (
-                this.renderFavorites()
-              ) : this.state.tab === 'history' ? (
-                this.renderHistory()
-              ) : this.state.tab === 'reviews' ? (
-                this.renderReviews()
-              ) : this.state.tab === 'profile' ? (
-                this.renderProfile()
-              ) : this.state.tab === 'about' ? (
-                this.renderAbout()
-              ) : (
-                this.renderAdmin()
-              )}
+              {this.state.tab === 'week'
+                ? this.renderWeek()
+                : this.state.tab === 'catalogue'
+                  ? this.renderCatalogue()
+                  : this.state.tab === 'favorites'
+                    ? this.renderFavorites()
+                    : this.state.tab === 'history'
+                      ? this.renderHistory()
+                      : this.state.tab === 'reviews'
+                        ? this.renderReviews()
+                        : this.state.tab === 'profile'
+                          ? this.renderProfile()
+                          : this.state.tab === 'about'
+                            ? this.renderAbout()
+                            : this.renderAdmin()}
             </>
           )}
         </main>
