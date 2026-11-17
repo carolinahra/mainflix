@@ -209,11 +209,7 @@ export class Mainflix extends Component<Props, State> {
   }
   private finishInvitation(): void {
     history.replaceState(null, '', location.pathname + location.search)
-    this.setState({
-      inviteToken: null,
-      invitation: null,
-      invitationLogin: false,
-    })
+    this.setState({ inviteToken: null, invitation: null, invitationLogin: false })
   }
   private register(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -461,17 +457,13 @@ export class Mainflix extends Component<Props, State> {
     // shortcut: availability is cached for this group session; add expiry if live updates are needed.
     if (Object.hasOwn(this.state.watchProviders, id)) return
     const groupId = this.state.group?.id
-    this.setState((state) => ({
-      watchProviders: { ...state.watchProviders, [id]: null },
-    }))
+    this.setState((state) => ({ watchProviders: { ...state.watchProviders, [id]: null } }))
     try {
       const providers = await this.props.container.api.request<MovieWatchProviders | null>(
         `/movies/providers/${id}`,
       )
       if (this.state.group?.id === groupId)
-        this.setState((state) => ({
-          watchProviders: { ...state.watchProviders, [id]: providers },
-        }))
+        this.setState((state) => ({ watchProviders: { ...state.watchProviders, [id]: providers } }))
     } catch (error: unknown) {
       if (error instanceof ApiException && error.status === 401) this.clearSession()
     }
@@ -675,11 +667,7 @@ export class Mainflix extends Component<Props, State> {
     const language: Language = event.target.value === 'es' ? 'es' : 'en'
     this.randomController?.abort()
     this.props.container.i18n.current = language
-    this.setState({
-      randomMovie: null,
-      randomLoading: false,
-      randomError: null,
-    })
+    this.setState({ randomMovie: null, randomLoading: false, randomError: null })
     this.setState({ language }, (): void => {
       if (this.state.user && this.state.group) void this.search(this.state.query)
       this.browseControllers.forEach((controller) => controller.abort())
@@ -781,9 +769,7 @@ export class Mainflix extends Component<Props, State> {
         `/auth/favorites?limit=30&offset=${more ? this.state.favorites.length : 0}`,
       )
       if (this.state.user?.id === userId)
-        this.setState((state) => ({
-          favorites: more ? [...state.favorites, ...rows] : rows,
-        }))
+        this.setState((state) => ({ favorites: more ? [...state.favorites, ...rows] : rows }))
     })
   }
   private async loadMyReviews(): Promise<void> {
@@ -793,9 +779,7 @@ export class Mainflix extends Component<Props, State> {
         `/auth/reviews?limit=30&offset=${this.state.myReviews.length}`,
       )
       if (this.state.user?.id === userId)
-        this.setState((state) => ({
-          myReviews: [...state.myReviews, ...rows],
-        }))
+        this.setState((state) => ({ myReviews: [...state.myReviews, ...rows] }))
     })
   }
   private favorite(movie: Film, favorite: boolean): void {
@@ -916,9 +900,7 @@ export class Mainflix extends Component<Props, State> {
     const controller = new AbortController()
     this.browseControllers.set(category, controller)
     const page = more ? (this.state.browse[category]?.page ?? 0) + 1 : 1
-    this.setState((state) => ({
-      browseLoading: { ...state.browseLoading, [category]: true },
-    }))
+    this.setState((state) => ({ browseLoading: { ...state.browseLoading, [category]: true } }))
     try {
       const result: Serialized<MovieBrowse> = await this.props.container.api.request(
         `/movies/browse?category=${category}&language=${this.state.language}&page=${page}`,
@@ -963,33 +945,21 @@ export class Mainflix extends Component<Props, State> {
         browse: {
           ...state.browse,
           [category]: {
-            ...(state.browse[category] ?? {
-              local: [],
-              remote: [],
-              page: 0,
-              totalPages: 1,
-            }),
+            ...(state.browse[category] ?? { local: [], remote: [], page: 0, totalPages: 1 }),
             remoteError: error instanceof ApiException ? error.code : 'genericError',
           },
         },
       }))
     } finally {
       if (!controller.signal.aborted)
-        this.setState((state) => ({
-          browseLoading: { ...state.browseLoading, [category]: false },
-        }))
+        this.setState((state) => ({ browseLoading: { ...state.browseLoading, [category]: false } }))
     }
   }
   private cancelRandom(): void {
     this.randomController?.abort()
     this.randomDialog.current?.close()
     this.setState(
-      {
-        randomOpen: false,
-        randomMovie: null,
-        randomLoading: false,
-        randomError: null,
-      },
+      { randomOpen: false, randomMovie: null, randomLoading: false, randomError: null },
       () => document.getElementById('random-trigger')?.focus(),
     )
   }
@@ -1040,13 +1010,9 @@ export class Mainflix extends Component<Props, State> {
       const candidates = available(result)
       if (!candidates.length && page !== 1) candidates.push(...available(first))
       if (!candidates.length)
-        this.setState({
-          randomError: randomMovie ? 'randomNoOther' : 'noMovies',
-        })
+        this.setState({ randomError: randomMovie ? 'randomNoOther' : 'noMovies' })
       else
-        this.setState({
-          randomMovie: candidates[Math.floor(Math.random() * candidates.length)]!,
-        })
+        this.setState({ randomMovie: candidates[Math.floor(Math.random() * candidates.length)]! })
     } catch (error: unknown) {
       if (!controller.signal.aborted)
         this.showError(error instanceof ApiException ? error.code : 'genericError')
@@ -1061,9 +1027,7 @@ export class Mainflix extends Component<Props, State> {
       const updated = await this.props.container.api.request<Serialized<RoundState>>(
         `/rounds/${round.week}/response?language=${language}`,
         'PUT',
-        {
-          tmdbId,
-        },
+        { tmdbId },
       )
       this.setState({ round: updated, message: 'nominated' })
       this.cancelRandom()
@@ -1285,10 +1249,7 @@ export class Mainflix extends Component<Props, State> {
   }
   private closeSurvey(): void {
     this.surveyDialog.current?.close()
-    this.setState({
-      surveyDismissed: this.state.surveyRound?.week ?? null,
-      surveyRound: null,
-    })
+    this.setState({ surveyDismissed: this.state.surveyRound?.week ?? null, surveyRound: null })
   }
   private async saveSurvey(action: SurveyAction): Promise<void> {
     const week = this.state.surveyRound?.week
@@ -1566,10 +1527,7 @@ export class Mainflix extends Component<Props, State> {
                         disabled={this.state.busy}
                         onClick={() => {
                           void this.perform(() =>
-                            this.saveSurvey({
-                              movieId: item.movieId,
-                              userIds: null,
-                            }),
+                            this.saveSurvey({ movieId: item.movieId, userIds: null }),
                           )
                         }}
                       >
@@ -1712,11 +1670,7 @@ export class Mainflix extends Component<Props, State> {
         detail,
         reviewed: state.reviewed.map((entry) =>
           entry.movie.id === id
-            ? {
-                ...entry,
-                reviews: detail.reviews,
-                reviewsLocked: detail.reviewsLocked,
-              }
+            ? { ...entry, reviews: detail.reviews, reviewsLocked: detail.reviewsLocked }
             : entry,
         ),
         myReviews: [
@@ -1736,9 +1690,7 @@ export class Mainflix extends Component<Props, State> {
       const rows: Serialized<HistoryEntry>[] = await this.props.container.api.request(
         `/rounds?limit=30&offset=${more ? this.state.history.length : 0}`,
       )
-      this.setState((state) => ({
-        history: more ? [...state.history, ...rows] : rows,
-      }))
+      this.setState((state) => ({ history: more ? [...state.history, ...rows] : rows }))
     })
   }
   private async loadReviews(more: boolean): Promise<void> {
@@ -1748,9 +1700,7 @@ export class Mainflix extends Component<Props, State> {
         `/movies/reviews?limit=30&offset=${more ? this.state.reviewed.length : 0}`,
       )
       if (this.state.user?.id === userId)
-        this.setState((state) => ({
-          reviewed: more ? [...state.reviewed, ...rows] : rows,
-        }))
+        this.setState((state) => ({ reviewed: more ? [...state.reviewed, ...rows] : rows }))
     })
   }
   private async loadAdmin(): Promise<void> {
@@ -1841,9 +1791,7 @@ export class Mainflix extends Component<Props, State> {
         targetId: Number(data.get('targetId')),
       })
       this.closeDetail()
-      this.setState((state) => ({
-        pending: state.pending.filter((m) => m.id !== id),
-      }))
+      this.setState((state) => ({ pending: state.pending.filter((m) => m.id !== id) }))
       await this.search(this.state.query)
       this.loadDiscovery()
     })
@@ -2248,11 +2196,7 @@ export class Mainflix extends Component<Props, State> {
                 <p>{this.t('catalogueEmpty')}</p>
                 <button
                   onClick={() => {
-                    this.setState({
-                      catalogueCategory: 'all',
-                      catalogueFilter: 'all',
-                      query: '',
-                    })
+                    this.setState({ catalogueCategory: 'all', catalogueFilter: 'all', query: '' })
                     void this.search('')
                   }}
                 >
@@ -3191,10 +3135,7 @@ export class Mainflix extends Component<Props, State> {
               className="desktop-navigation"
               aria-label="Mainflix"
               onFocus={(event) =>
-                event.target.scrollIntoView({
-                  block: 'nearest',
-                  inline: 'nearest',
-                })
+                event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
               }
             >
               {(
@@ -3265,6 +3206,17 @@ export class Mainflix extends Component<Props, State> {
                 <button disabled={this.state.busy} onClick={this.chooseGroups.bind(this)}>
                   {this.t('switchGroup')}
                 </button>
+                {this.state.group && (
+                  <button
+                    disabled={this.state.busy}
+                    onClick={() => {
+                      this.profileMenu.current?.removeAttribute('open')
+                      this.setState({ leavingGroup: true })
+                    }}
+                  >
+                    {this.t('leaveGroup')}
+                  </button>
+                )}
                 <button disabled={this.state.busy} onClick={() => this.invite()}>
                   {this.t('inviteToApp')}
                 </button>
@@ -3309,22 +3261,18 @@ export class Mainflix extends Component<Props, State> {
           ) : (
             <>
               <section className="group-toolbar">
-                <strong>{this.state.group.name}</strong>
-                <button disabled={this.state.busy} onClick={this.chooseGroups.bind(this)}>
-                  {this.t('switchGroup')}
-                </button>
-                <button
-                  disabled={this.state.busy}
-                  onClick={() => this.setState({ leavingGroup: true })}
-                >
-                  {this.t('leaveGroup')}
-                </button>
+                <div className="group-identity">
+                  <strong>{this.state.group.name}</strong>
+                  <small>{this.t('yourMovieGroup')}</small>
+                </div>
                 {this.state.group.is_owner && (
                   <button
+                    className="group-invite"
+                    aria-label={this.t('inviteToGroup')}
                     disabled={this.state.busy}
                     onClick={() => this.invite(this.state.group!.id)}
                   >
-                    {this.t('inviteToGroup')}
+                    {this.t('inviteShort')} <span aria-hidden="true">↗</span>
                   </button>
                 )}
                 {!this.state.group.can_vote && !this.state.user.is_admin && (
