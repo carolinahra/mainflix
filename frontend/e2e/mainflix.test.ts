@@ -248,6 +248,43 @@ test(
   },
 )
 
+test('profile menu actions survive touch focus loss on mobile', { timeout: 60_000 }, async () => {
+  const f = new BrowserFixture()
+  try {
+    await f.prepare()
+    const page = await f.page(true)
+    await f.login(page, 'friend1')
+    const menu = page.locator('.profile-menu')
+    const summary = page.locator('.profile-menu > summary')
+    await menu.evaluate((menu) => {
+      // Touch browsers can blur the summary without focusing the tapped button.
+      menu.addEventListener('pointerdown', (event) => {
+        if ((event.target as HTMLElement).closest('button'))
+          menu.querySelector('summary')?.blur()
+      })
+    })
+    await summary.tap()
+    await summary.focus()
+    await menu.getByRole('button', { name: 'Go to my profile', exact: true }).tap()
+    await page.getByRole('heading', { name: 'My profile', exact: true }).waitFor({ timeout: 3000 })
+    await summary.tap()
+    await summary.focus()
+    await menu.getByRole('button', { name: 'Switch group', exact: true }).tap()
+    await page.getByRole('button', { name: 'Mainflix', exact: true }).waitFor()
+    await summary.tap()
+    await summary.focus()
+    await menu.getByRole('button', { name: 'Invite to Mainflix', exact: true }).tap()
+    await page.getByLabel('Private invitation link', { exact: true }).waitFor()
+    assert.equal(await menu.getAttribute('open'), null)
+    await summary.tap()
+    await summary.focus()
+    await menu.getByRole('button', { name: 'Sign out', exact: true }).tap()
+    await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor()
+  } finally {
+    await f.close()
+  }
+})
+
 test(
   'past weekly movies stay on home until the last voter reviews them',
   { timeout: 60_000 },

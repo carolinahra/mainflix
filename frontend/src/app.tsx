@@ -180,6 +180,7 @@ export class Mainflix extends Component<Props, State> {
     })
   }
   private invite(groupId?: number): void {
+    this.profileMenu.current?.removeAttribute('open')
     this.setState({ invitationLink: null })
     void this.perform(async () => {
       const invitationLink = await this.props.container.api.request<{
@@ -2841,7 +2842,7 @@ export class Mainflix extends Component<Props, State> {
               className="profile-menu"
               ref={this.profileMenu}
               onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget))
+                if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget))
                   event.currentTarget.removeAttribute('open')
               }}
               onKeyDown={(event) => {
