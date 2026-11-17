@@ -103,7 +103,7 @@ class BrowserFixture {
   }
 }
 
-test('creators manage groups and unimported TMDB cards show providers on desktop and iPhone SE', { timeout: 120_000 }, async () => {
+test('creators manage groups and availability opens only with movie details on desktop and iPhone SE', { timeout: 120_000 }, async () => {
   const f = new BrowserFixture()
   try {
     await f.prepare()
@@ -113,11 +113,15 @@ test('creators manage groups and unimported TMDB cards show providers on desktop
         const category = new URL(route.request().url()).searchParams.get('category')
         await route.fulfill({ json: { local: [], remote: category === 'popular' ? [{ tmdb_id: 42, title: 'Unimported film', release_year: 2026, overview: '', poster_path: null }] : [], remoteError: null, page: 1, totalPages: 1 } })
       })
-      await page.route('**/api/movies/providers/42', route => route.fulfill({ json: {
-        link: 'https://www.themoviedb.org/movie/42/watch?locale=ES',
-        flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/t2yyOv40HZeVlLjYsCsPHnWLk4W.jpg' }],
-        rent: [{ provider_id: 10, provider_name: 'Amazon Video', logo_path: '/seGSXajazLMCKGB5hnRCidtjay1.jpg' }],
-      } }))
+      let providerRequests = 0
+      await page.route('**/api/movies/providers/42', route => {
+        providerRequests++
+        return route.fulfill({ json: {
+          link: 'https://www.themoviedb.org/movie/42/watch?locale=ES',
+          flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/t2yyOv40HZeVlLjYsCsPHnWLk4W.jpg' }],
+          rent: [{ provider_id: 10, provider_name: 'Amazon Video', logo_path: '/seGSXajazLMCKGB5hnRCidtjay1.jpg' }],
+        } })
+      })
       await f.login(page, 'admin')
       await page.locator('.group-toolbar').getByRole('button', { name: 'Switch group', exact: true }).click()
       await page.getByRole('button', { name: 'Create new group', exact: true }).click()
@@ -128,15 +132,25 @@ test('creators manage groups and unimported TMDB cards show providers on desktop
       const group = await f.database.client.selectFrom('groups').select('id').where('name', '=', groupName).executeTakeFirstOrThrow()
       const member = await f.database.client.selectFrom('users').select('id').where('username', '=', 'friend1').executeTakeFirstOrThrow()
       await f.container.groupRepository.join(member.id, group.id, f.container.clock.weekKey(), f.database.client)
-      const card = page.locator('.movie-card[data-tmdb-id="42"]')
+      const card = page.locator('.movie-card').filter({ has: page.getByRole('heading', { name: 'Unimported film', exact: true }) }).first()
       await card.scrollIntoViewIfNeeded()
-      await card.getByRole('img', { name: 'Netflix', exact: true }).waitFor()
-      assert.equal(await card.getByRole('heading', { name: 'Available at', exact: true }).count(), 1)
-      const size = await card.getByRole('img', { name: 'Netflix', exact: true }).boundingBox()
+      assert.equal(await card.getByRole('heading', { name: 'Available at', exact: true }).count(), 0)
+      assert.equal(providerRequests, 0)
+      assert.equal((await f.database.client.selectFrom('movies').select('id').where('tmdb_id', '=', 42).execute()).length, 0)
+      await f.database.client.insertInto('movies').values({
+        group_id: group.id, tmdb_id: 42, title: 'Provider film', approval_status: 'approved',
+      }).execute()
+      await page.getByRole('button', { name: 'Catalogue', exact: true }).click()
+      await page.locator('#movie-catalogue').getByRole('button', { name: 'Provider film', exact: true }).click()
+      const detail = page.getByRole('dialog')
+      await detail.getByRole('img', { name: 'Netflix', exact: true }).waitFor()
+      assert.equal(await detail.getByRole('heading', { name: 'Available at', exact: true }).count(), 1)
+      assert.equal(providerRequests, 1)
+      const size = await detail.getByRole('img', { name: 'Netflix', exact: true }).boundingBox()
       assert.equal(size?.width, 40)
       assert.equal(size?.height, 40)
-      assert.equal((await f.database.client.selectFrom('movies').select('id').where('tmdb_id', '=', 42).execute()).length, 0)
-      await page.screenshot({ path: `/tmp/mainflix-catalogue-providers-${mobile ? 'iphone-se' : 'desktop'}.png` })
+      await page.screenshot({ path: `/tmp/mainflix-detail-providers-${mobile ? 'iphone-se' : 'desktop'}.png` })
+      await detail.getByRole('button', { name: 'Close ×', exact: true }).click()
       const guest = await f.page(mobile)
       await f.login(guest, 'friend1')
       await guest.locator('.group-toolbar').getByRole('button', { name: 'Switch group', exact: true }).click()

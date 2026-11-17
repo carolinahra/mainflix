@@ -86,19 +86,6 @@ export class Mainflix extends Component<Props, State> {
   private randomController: AbortController | undefined
   private searchController: AbortController | undefined
   private readonly browseControllers = new Map<MovieCategory, AbortController>()
-  private readonly watchProviderObserver: IntersectionObserver | null =
-    typeof IntersectionObserver === 'undefined'
-      ? null
-      : new IntersectionObserver(
-          (entries) => {
-            for (const entry of entries) {
-              if (!entry.isIntersecting || !entry.target.isConnected) continue
-              this.watchProviderObserver?.unobserve(entry.target)
-              void this.loadWatchProviders(Number(entry.target.getAttribute('data-tmdb-id')))
-            }
-          },
-          { rootMargin: '100px' },
-        )
   override state: State = {
     groupMembers: [],
     groupAction: null,
@@ -423,7 +410,6 @@ export class Mainflix extends Component<Props, State> {
     )
   }
   override componentWillUnmount(): void {
-    this.watchProviderObserver?.disconnect()
     window.removeEventListener('hashchange', this.hashChanged)
     clearInterval(this.poll)
     clearTimeout(this.debounce)
@@ -434,16 +420,8 @@ export class Mainflix extends Component<Props, State> {
     this.browseControllers.forEach((controller) => controller.abort())
   }
   override componentDidUpdate(): void {
-    const movies = [this.state.round?.winner, this.state.detail?.movie]
-    for (const id of new Set(movies.flatMap((movie) => (movie?.tmdb_id ? [movie.tmdb_id] : []))))
-      void this.loadWatchProviders(id)
-  }
-  private observeWatchProviders(element: HTMLElement | null): (() => void) | undefined {
-    if (!element) return
-    const id = Number(element.dataset.tmdbId)
-    if (!id || Object.hasOwn(this.state.watchProviders, id)) return
-    this.watchProviderObserver?.observe(element)
-    return () => this.watchProviderObserver?.unobserve(element)
+    const id = this.state.detail?.movie.tmdb_id
+    if (id) void this.loadWatchProviders(id)
   }
   private async loadWatchProviders(id: number): Promise<void> {
     // shortcut: availability is cached for this group session; add expiry if live updates are needed.
@@ -461,7 +439,6 @@ export class Mainflix extends Component<Props, State> {
     }
   }
   private clearSession(): void {
-    this.watchProviderObserver?.disconnect()
     this.props.container.api.groupId = null
     this.profileMenu.current?.removeAttribute('open')
     this.randomController?.abort()
@@ -1794,12 +1771,7 @@ export class Mainflix extends Component<Props, State> {
       movie.eligible &&
       movie.approval_status === 'approved'
     return (
-      <article
-        className="movie-card"
-        key={movie.id}
-        data-tmdb-id={movie.tmdb_id ?? undefined}
-        ref={(element) => this.observeWatchProviders(element)}
-      >
+      <article className="movie-card" key={movie.id}>
         <button className="poster-button" onClick={(): void => this.openMovie(movie.id)}>
           {this.renderPoster(movie)}
         </button>
@@ -1809,7 +1781,6 @@ export class Mainflix extends Component<Props, State> {
           </button>
         </h3>
         <p className="muted">{movie.release_year}</p>
-        {movie.tmdb_id && this.renderWatchProviders(movie.tmdb_id)}
         <span className="badge">{this.t(movie.approval_status)}</span>
         {!movie.eligible && <p className="muted">{this.t('excluded')}</p>}
         {canNominate && (
@@ -1829,16 +1800,10 @@ export class Mainflix extends Component<Props, State> {
   private renderRemoteCard(movie: MovieMetadata): ReactNode {
     const canNominate = this.canVote && this.state.round?.status === 'collecting'
     return (
-      <article
-        className="movie-card"
-        key={`tmdb-${movie.tmdb_id}`}
-        data-tmdb-id={movie.tmdb_id}
-        ref={(element) => this.observeWatchProviders(element)}
-      >
+      <article className="movie-card" key={`tmdb-${movie.tmdb_id}`}>
         {this.renderPoster(movie)}
         <h3>{movie.title}</h3>
         <p className="muted">{movie.release_year} · TMDB</p>
-        {this.renderWatchProviders(movie.tmdb_id)}
         <button
           disabled={this.state.busy}
           onClick={(): void =>

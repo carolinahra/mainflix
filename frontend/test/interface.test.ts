@@ -86,7 +86,7 @@ test('a removed member loses cached group data when polling reports forbidden ac
   assert.deepEqual(app.state.groupMembers, [])
 })
 
-test('the weekly pick and movie dialog show subscription and rental icons with JustWatch credit', () => {
+test('availability appears only in the movie dialog with subscription, rental and JustWatch details', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const container = { i18n: new I18n('en') }
   const app = new Mainflix({ container: container as Container })
@@ -153,13 +153,15 @@ test('the weekly pick and movie dialog show subscription and rental icons with J
   ] as const) {
     container.i18n = new I18n(language)
     const markup = renderToStaticMarkup(app.render())
-    assert.equal(markup.split(`<h3>${heading}</h3>`).length - 1, 2)
+    assert.equal(markup.split(`<h3>${heading}</h3>`).length - 1, 1)
+    const main = markup.slice(markup.indexOf('<main'), markup.indexOf('</main>'))
+    assert.ok(!main.includes(heading))
     assert.doesNotMatch(markup, /Catalogue ID|ID del catálogo|· #1/)
     assert.match(markup, /id="browse-christmas"/)
     assert.ok(markup.includes(language === 'es' ? 'Películas de Navidad' : 'Christmas movies'))
     assert.ok(markup.includes('Home Alone'))
-    assert.equal((markup.match(/alt="Netflix"/g) ?? []).length, 2)
-    assert.equal((markup.match(/alt="Amazon Video"/g) ?? []).length, 2)
+    assert.equal((markup.match(/alt="Netflix"/g) ?? []).length, 1)
+    assert.equal((markup.match(/alt="Amazon Video"/g) ?? []).length, 1)
     assert.match(markup, /src="https:\/\/image.tmdb.org\/t\/p\/w92\/netflix.jpg"/)
     assert.ok(markup.indexOf(subscription) < markup.indexOf('alt="Netflix"'))
     assert.ok(markup.indexOf('alt="Netflix"') < markup.indexOf(rent))
@@ -175,7 +177,7 @@ test('the weekly pick and movie dialog show subscription and rental icons with J
   assert.doesNotMatch(renderToStaticMarkup(app.render()), /Disponible en|JustWatch/)
 })
 
-test('unimported TMDB catalogue cards show platform logos without a nomination', () => {
+test('unimported TMDB catalogue cards do not show availability', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
   app.state = {
@@ -206,9 +208,8 @@ test('unimported TMDB catalogue cards show platform logos without a nomination',
     },
   }
   const markup = renderToStaticMarkup(app.render())
-  assert.match(markup, /data-tmdb-id="42"/)
-  assert.match(markup, /Available at/)
-  assert.match(markup, /alt="Netflix"/)
+  assert.match(markup, /Unimported film/)
+  assert.doesNotMatch(markup, /Available at|alt="Netflix"/)
 })
 
 test('opening a movie requests its description in the selected interface language', async (context) => {
