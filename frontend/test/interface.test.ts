@@ -458,7 +458,13 @@ test('discovery features requested films and puts favorite genres before other b
       },
     },
   }
-  const markup = renderToStaticMarkup(app.render())
+  const markup = [
+    app['renderBrowseRow']('popular'),
+    app['renderSearch'](),
+    app['renderDiscovery'](),
+  ]
+    .map((section) => renderToStaticMarkup(section))
+    .join('')
   assert.match(markup, /La bola negra/)
   assert.match(markup, /Ruega por nosotras/)
   assert.ok(markup.indexOf('Comedia romántica') < markup.indexOf('Terror'))
@@ -466,7 +472,7 @@ test('discovery features requested films and puts favorite genres before other b
   assert.match(markup, /Populares en España/)
   assert.doesNotMatch(markup, /Vuestras imprescindibles|Estrenos en España|popularidad global/)
   assert.equal((markup.match(/id="browse-popular"/g) ?? []).length, 1)
-  assert.equal((markup.match(/<h3>La bola negra<\/h3>/g) ?? []).length, 1)
+  assert.equal((markup.match(/<h3[^>]*>La bola negra<\/h3>/g) ?? []).length, 1)
   assert.ok(markup.indexOf('La bola negra') < markup.indexOf('id="movie-catalogue"'))
   assert.match(markup, /Explorar por género/)
   assert.match(markup, /id="browse-barbie">Barbie/)
@@ -757,6 +763,40 @@ test('personal favorites from another group do not offer nomination in the curre
   const markup = renderToStaticMarkup(app.render())
   assert.match(markup, /Go to my profile/)
   assert.match(markup, /My profile/)
+})
+
+test('catalogue hearts recognize saved movies outside the first page of favorites', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  const movie = {
+    id: 31,
+    group_id: 1,
+    tmdb_id: null,
+    title: 'Older favorite',
+    release_year: 2020,
+    overview: '',
+    poster_path: null,
+    approval_status: 'approved' as const,
+    submitted_by: null,
+    eligible: true,
+    eligibility_changed_by: null,
+    eligibility_changed_at: null,
+    created_at: '2026-11-09T12:00:00Z',
+  }
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'catalogue',
+    user: { id: 1, name: 'Viewer', username: 'viewer', email: null, is_admin: false, avatar: null },
+    group: { id: 1, name: 'Group', is_owner: false, can_vote: true },
+    search: { local: [movie], remote: [], remoteError: null, favorites: [31] },
+    favorites: [],
+  }
+  const markup = renderToStaticMarkup(app.render())
+  assert.match(
+    markup,
+    /class="movie-favorite"[^>]*aria-label="Remove from favorites"[^>]*aria-pressed="true"/,
+  )
 })
 
 test('exception toasts expire after five seconds and a new exception restarts the timer', async (context) => {

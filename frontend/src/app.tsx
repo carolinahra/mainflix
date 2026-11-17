@@ -24,7 +24,8 @@ import type {
 
 type Film = Serialized<Movie>
 type Detail = { movie: Film; favorite: boolean } & Serialized<MovieReviews>
-type Tab = 'week' | 'catalogue' | 'history' | 'reviews' | 'profile' | 'admin' | 'about'
+type Tab =
+  'week' | 'catalogue' | 'favorites' | 'history' | 'reviews' | 'profile' | 'admin' | 'about'
 interface Props {
   container: Container
 }
@@ -153,6 +154,7 @@ export class Mainflix extends Component<Props, State> {
     await this.refreshRound()
     await this.search('')
     this.loadDiscovery()
+    void this.loadFavorites(false)
   }
   private chooseGroups(): void {
     const user = this.state.user
@@ -202,7 +204,11 @@ export class Mainflix extends Component<Props, State> {
   }
   private finishInvitation(): void {
     history.replaceState(null, '', location.pathname + location.search)
-    this.setState({ inviteToken: null, invitation: null, invitationLogin: false })
+    this.setState({
+      inviteToken: null,
+      invitation: null,
+      invitationLogin: false,
+    })
   }
   private register(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -450,13 +456,17 @@ export class Mainflix extends Component<Props, State> {
     // shortcut: availability is cached for this group session; add expiry if live updates are needed.
     if (Object.hasOwn(this.state.watchProviders, id)) return
     const groupId = this.state.group?.id
-    this.setState((state) => ({ watchProviders: { ...state.watchProviders, [id]: null } }))
+    this.setState((state) => ({
+      watchProviders: { ...state.watchProviders, [id]: null },
+    }))
     try {
       const providers = await this.props.container.api.request<MovieWatchProviders | null>(
         `/movies/providers/${id}`,
       )
       if (this.state.group?.id === groupId)
-        this.setState((state) => ({ watchProviders: { ...state.watchProviders, [id]: providers } }))
+        this.setState((state) => ({
+          watchProviders: { ...state.watchProviders, [id]: providers },
+        }))
     } catch (error: unknown) {
       if (error instanceof ApiException && error.status === 401) this.clearSession()
     }
@@ -657,7 +667,11 @@ export class Mainflix extends Component<Props, State> {
     const language: Language = event.target.value === 'es' ? 'es' : 'en'
     this.randomController?.abort()
     this.props.container.i18n.current = language
-    this.setState({ randomMovie: null, randomLoading: false, randomError: null })
+    this.setState({
+      randomMovie: null,
+      randomLoading: false,
+      randomError: null,
+    })
     this.setState({ language }, (): void => {
       if (this.state.user && this.state.group) void this.search(this.state.query)
       this.browseControllers.forEach((controller) => controller.abort())
@@ -752,14 +766,16 @@ export class Mainflix extends Component<Props, State> {
       if (this.state.user?.id === userId) this.setState({ favorites, myReviews })
     })
   }
-  private async loadFavorites(): Promise<void> {
+  private async loadFavorites(more: boolean): Promise<void> {
     const userId = this.state.user?.id
     await this.perform(async () => {
       const rows: Film[] = await this.props.container.api.request(
-        `/auth/favorites?limit=30&offset=${this.state.favorites.length}`,
+        `/auth/favorites?limit=30&offset=${more ? this.state.favorites.length : 0}`,
       )
       if (this.state.user?.id === userId)
-        this.setState((state) => ({ favorites: [...state.favorites, ...rows] }))
+        this.setState((state) => ({
+          favorites: more ? [...state.favorites, ...rows] : rows,
+        }))
     })
   }
   private async loadMyReviews(): Promise<void> {
@@ -769,7 +785,9 @@ export class Mainflix extends Component<Props, State> {
         `/auth/reviews?limit=30&offset=${this.state.myReviews.length}`,
       )
       if (this.state.user?.id === userId)
-        this.setState((state) => ({ myReviews: [...state.myReviews, ...rows] }))
+        this.setState((state) => ({
+          myReviews: [...state.myReviews, ...rows],
+        }))
     })
   }
   private favorite(movie: Film, favorite: boolean): void {
@@ -788,10 +806,17 @@ export class Mainflix extends Component<Props, State> {
         favorite ? 'PUT' : 'DELETE',
         {},
       )
-      const favorites: Film[] = await this.props.container.api.request('/auth/favorites?limit=30')
       if (this.state.user?.id !== userId) return
       this.setState((state) => ({
-        favorites,
+        favorites: favorite
+          ? [movie, ...state.favorites.filter((entry) => entry.id !== movie.id)]
+          : state.favorites.filter((entry) => entry.id !== movie.id),
+        search: {
+          ...state.search,
+          favorites: favorite
+            ? [...new Set([...(state.search.favorites ?? []), movie.id])]
+            : (state.search.favorites ?? []).filter((id) => id !== movie.id),
+        },
         detail: state.detail?.movie.id === movie.id ? { ...state.detail, favorite } : state.detail,
         message: favorite ? 'favoriteAdded' : 'favoriteRemoved',
       }))
@@ -815,11 +840,12 @@ export class Mainflix extends Component<Props, State> {
   }
   private navigate(tab: Tab): void {
     this.profileMenu.current?.removeAttribute('open')
-    this.setState({ tab, error: null, message: null })
+    this.setState({ tab, error: null, message: null }, () => window.scrollTo(0, 0))
     if (tab === 'week') void this.refreshRound()
     if (tab === 'history') void this.loadHistory(false)
     if (tab === 'reviews') void this.loadReviews(false)
     if (tab === 'profile') void this.loadProfile()
+    if (tab === 'favorites') void this.loadFavorites(false)
     if (tab === 'admin') void this.loadAdmin()
     if (tab === 'catalogue' || tab === 'week') void this.search(this.state.query)
   }
@@ -877,7 +903,9 @@ export class Mainflix extends Component<Props, State> {
     const controller = new AbortController()
     this.browseControllers.set(category, controller)
     const page = more ? (this.state.browse[category]?.page ?? 0) + 1 : 1
-    this.setState((state) => ({ browseLoading: { ...state.browseLoading, [category]: true } }))
+    this.setState((state) => ({
+      browseLoading: { ...state.browseLoading, [category]: true },
+    }))
     try {
       const result: Serialized<MovieBrowse> = await this.props.container.api.request(
         `/movies/browse?category=${category}&language=${this.state.language}&page=${page}`,
@@ -922,21 +950,33 @@ export class Mainflix extends Component<Props, State> {
         browse: {
           ...state.browse,
           [category]: {
-            ...(state.browse[category] ?? { local: [], remote: [], page: 0, totalPages: 1 }),
+            ...(state.browse[category] ?? {
+              local: [],
+              remote: [],
+              page: 0,
+              totalPages: 1,
+            }),
             remoteError: error instanceof ApiException ? error.code : 'genericError',
           },
         },
       }))
     } finally {
       if (!controller.signal.aborted)
-        this.setState((state) => ({ browseLoading: { ...state.browseLoading, [category]: false } }))
+        this.setState((state) => ({
+          browseLoading: { ...state.browseLoading, [category]: false },
+        }))
     }
   }
   private cancelRandom(): void {
     this.randomController?.abort()
     this.randomDialog.current?.close()
     this.setState(
-      { randomOpen: false, randomMovie: null, randomLoading: false, randomError: null },
+      {
+        randomOpen: false,
+        randomMovie: null,
+        randomLoading: false,
+        randomError: null,
+      },
       () => document.getElementById('random-trigger')?.focus(),
     )
   }
@@ -987,9 +1027,13 @@ export class Mainflix extends Component<Props, State> {
       const candidates = available(result)
       if (!candidates.length && page !== 1) candidates.push(...available(first))
       if (!candidates.length)
-        this.setState({ randomError: randomMovie ? 'randomNoOther' : 'noMovies' })
+        this.setState({
+          randomError: randomMovie ? 'randomNoOther' : 'noMovies',
+        })
       else
-        this.setState({ randomMovie: candidates[Math.floor(Math.random() * candidates.length)]! })
+        this.setState({
+          randomMovie: candidates[Math.floor(Math.random() * candidates.length)]!,
+        })
     } catch (error: unknown) {
       if (!controller.signal.aborted)
         this.showError(error instanceof ApiException ? error.code : 'genericError')
@@ -1004,7 +1048,9 @@ export class Mainflix extends Component<Props, State> {
       const updated = await this.props.container.api.request<Serialized<RoundState>>(
         `/rounds/${round.week}/response?language=${language}`,
         'PUT',
-        { tmdbId },
+        {
+          tmdbId,
+        },
       )
       this.setState({ round: updated, message: 'nominated' })
       this.cancelRandom()
@@ -1226,7 +1272,10 @@ export class Mainflix extends Component<Props, State> {
   }
   private closeSurvey(): void {
     this.surveyDialog.current?.close()
-    this.setState({ surveyDismissed: this.state.surveyRound?.week ?? null, surveyRound: null })
+    this.setState({
+      surveyDismissed: this.state.surveyRound?.week ?? null,
+      surveyRound: null,
+    })
   }
   private async saveSurvey(action: SurveyAction): Promise<void> {
     const week = this.state.surveyRound?.week
@@ -1504,7 +1553,10 @@ export class Mainflix extends Component<Props, State> {
                         disabled={this.state.busy}
                         onClick={() => {
                           void this.perform(() =>
-                            this.saveSurvey({ movieId: item.movieId, userIds: null }),
+                            this.saveSurvey({
+                              movieId: item.movieId,
+                              userIds: null,
+                            }),
                           )
                         }}
                       >
@@ -1646,7 +1698,11 @@ export class Mainflix extends Component<Props, State> {
         detail,
         reviewed: state.reviewed.map((entry) =>
           entry.movie.id === id
-            ? { ...entry, reviews: detail.reviews, reviewsLocked: detail.reviewsLocked }
+            ? {
+                ...entry,
+                reviews: detail.reviews,
+                reviewsLocked: detail.reviewsLocked,
+              }
             : entry,
         ),
         myReviews: [
@@ -1666,7 +1722,9 @@ export class Mainflix extends Component<Props, State> {
       const rows: Serialized<HistoryEntry>[] = await this.props.container.api.request(
         `/rounds?limit=30&offset=${more ? this.state.history.length : 0}`,
       )
-      this.setState((state) => ({ history: more ? [...state.history, ...rows] : rows }))
+      this.setState((state) => ({
+        history: more ? [...state.history, ...rows] : rows,
+      }))
     })
   }
   private async loadReviews(more: boolean): Promise<void> {
@@ -1676,7 +1734,9 @@ export class Mainflix extends Component<Props, State> {
         `/movies/reviews?limit=30&offset=${more ? this.state.reviewed.length : 0}`,
       )
       if (this.state.user?.id === userId)
-        this.setState((state) => ({ reviewed: more ? [...state.reviewed, ...rows] : rows }))
+        this.setState((state) => ({
+          reviewed: more ? [...state.reviewed, ...rows] : rows,
+        }))
     })
   }
   private async loadAdmin(): Promise<void> {
@@ -1767,7 +1827,9 @@ export class Mainflix extends Component<Props, State> {
         targetId: Number(data.get('targetId')),
       })
       this.closeDetail()
-      this.setState((state) => ({ pending: state.pending.filter((m) => m.id !== id) }))
+      this.setState((state) => ({
+        pending: state.pending.filter((m) => m.id !== id),
+      }))
       await this.search(this.state.query)
       this.loadDiscovery()
     })
@@ -1806,53 +1868,104 @@ export class Mainflix extends Component<Props, State> {
       movie.group_id === this.state.group?.id &&
       movie.eligible &&
       movie.approval_status === 'approved'
+    const favorite =
+      this.state.favorites.some((entry) => entry.id === movie.id) ||
+      (this.state.search.favorites ?? []).includes(movie.id)
+    const nominated = this.state.round?.responses.some(
+      (response) => response.user_id === this.state.user?.id && response.movie_id === movie.id,
+    )
     return (
       <article className="movie-card" key={movie.id}>
-        <button className="poster-button" onClick={(): void => this.openMovie(movie.id)}>
+        <button
+          className="poster-button"
+          aria-label={`${this.t('movieDetails')}: ${movie.title}`}
+          onClick={(): void => this.openMovie(movie.id)}
+        >
           {this.renderPoster(movie)}
         </button>
-        <h3>
-          <button className="text-button" onClick={(): void => this.openMovie(movie.id)}>
-            {movie.title}
-          </button>
-        </h3>
-        <p className="muted">{movie.release_year}</p>
-        {movie.approval_status !== 'approved' && (
-          <span className="badge">{this.t(movie.approval_status)}</span>
-        )}
-        {!movie.eligible && <p className="muted">{this.t('excluded')}</p>}
-        {canNominate && (
-          <button disabled={this.state.busy} onClick={(): void => this.nominate(movie.id)}>
-            {this.t('nominate')}
-          </button>
-        )}
-        <button
-          disabled={this.state.busy}
-          onClick={() => this.favorite(movie, this.state.tab !== 'profile')}
-        >
-          {this.t(this.state.tab === 'profile' ? 'removeFavorite' : 'addFavorite')}
-        </button>
+        <div className="movie-card-body">
+          <p className="movie-year muted">{movie.release_year}</p>
+          <h3>
+            <button
+              className="text-button"
+              title={movie.title}
+              onClick={(): void => this.openMovie(movie.id)}
+            >
+              {movie.title}
+            </button>
+          </h3>
+          {movie.approval_status !== 'approved' && (
+            <span className="badge">{this.t(movie.approval_status)}</span>
+          )}
+          {!movie.eligible && <p className="muted movie-status">{this.t('excluded')}</p>}
+          <div className="movie-actions">
+            {canNominate && (
+              <button
+                className="movie-nominate"
+                aria-pressed={nominated ?? false}
+                disabled={this.state.busy}
+                onClick={(): void => this.nominate(movie.id)}
+              >
+                <span aria-hidden="true">{nominated ? '✓' : '+'}</span>
+                {this.t(nominated ? 'nominatedLabel' : 'nominate')}
+              </button>
+            )}
+            <button
+              className="movie-favorite"
+              aria-label={this.t(favorite ? 'removeFavorite' : 'addFavorite')}
+              title={this.t(favorite ? 'removeFavorite' : 'addFavorite')}
+              aria-pressed={favorite}
+              disabled={this.state.busy}
+              onClick={() => this.favorite(movie, !favorite)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </article>
     )
   }
   private renderRemoteCard(movie: MovieMetadata): ReactNode {
     const canNominate = this.canVote && this.state.round?.status === 'collecting'
+    const favorite = this.state.favorites.find(
+      (entry) => entry.tmdb_id === movie.tmdb_id && entry.group_id === this.state.group?.id,
+    )
     return (
       <article className="movie-card" key={`tmdb-${movie.tmdb_id}`}>
         {this.renderPoster(movie)}
-        <h3>{movie.title}</h3>
-        <p className="muted">{movie.release_year} · TMDB</p>
-        <button
-          disabled={this.state.busy}
-          onClick={(): void =>
-            canNominate ? this.nominateTmdb(movie.tmdb_id) : this.importMovie(movie.tmdb_id)
-          }
-        >
-          {this.t(canNominate ? 'nominate' : 'import')}
-        </button>
-        <button disabled={this.state.busy} onClick={() => this.favoriteTmdb(movie.tmdb_id)}>
-          {this.t('addFavorite')}
-        </button>
+        <div className="movie-card-body">
+          <p className="movie-year muted">{movie.release_year}</p>
+          <h3 title={movie.title}>{movie.title}</h3>
+          <div className="movie-actions">
+            <button
+              className="movie-nominate"
+              aria-label={this.t(canNominate ? 'nominate' : 'import')}
+              disabled={this.state.busy}
+              onClick={(): void =>
+                canNominate ? this.nominateTmdb(movie.tmdb_id) : this.importMovie(movie.tmdb_id)
+              }
+            >
+              <span aria-hidden="true">+</span>
+              {this.t(canNominate ? 'nominate' : 'addMovieAction')}
+            </button>
+            <button
+              className="movie-favorite"
+              aria-label={this.t(favorite ? 'removeFavorite' : 'addFavorite')}
+              title={this.t(favorite ? 'removeFavorite' : 'addFavorite')}
+              aria-pressed={Boolean(favorite)}
+              disabled={this.state.busy}
+              onClick={() =>
+                favorite ? this.favorite(favorite, false) : this.favoriteTmdb(movie.tmdb_id)
+              }
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </article>
     )
   }
@@ -2098,9 +2211,6 @@ export class Mainflix extends Component<Props, State> {
     const toReview = this.state.toReview.filter((movie) => movie.id !== round.winner_id)
     return (
       <>
-        {this.renderWelcome()}
-        {this.renderBrowseRow('christmas')}
-        {this.renderBrowseRow('popular')}
         <section className="party-panel" aria-label={this.t('party')}>
           <div className="party-heading">
             <span className="party-icon" aria-hidden="true">
@@ -2205,6 +2315,9 @@ export class Mainflix extends Component<Props, State> {
             </div>
           </section>
         )}
+        {this.renderWelcome()}
+        {this.renderBrowseRow('christmas')}
+        {this.renderBrowseRow('popular')}
         {this.renderSearch()}
         {this.renderDiscovery()}
       </>
@@ -2334,6 +2447,22 @@ export class Mainflix extends Component<Props, State> {
       </section>
     )
   }
+  private renderFavorites(): ReactNode {
+    return (
+      <section aria-labelledby="profile-favorites">
+        <h2 id="profile-favorites">{this.t('favorites')}</h2>
+        {!this.state.favorites.length && <p className="muted">{this.t('noFavorites')}</p>}
+        <div className="movie-grid">
+          {this.state.favorites.map((movie) => this.renderCard(movie))}
+        </div>
+        {this.state.favorites.length >= 30 && (
+          <button disabled={this.state.busy} onClick={() => void this.loadFavorites(true)}>
+            {this.t('more')}
+          </button>
+        )}
+      </section>
+    )
+  }
   private renderProfile(): ReactNode {
     const user = this.state.user!
     return (
@@ -2414,23 +2543,7 @@ export class Mainflix extends Component<Props, State> {
             </button>
           )}
         </section>
-        <section aria-labelledby="profile-favorites">
-          <h2 id="profile-favorites">{this.t('favorites')}</h2>
-          {!this.state.favorites.length && <p className="muted">{this.t('noFavorites')}</p>}
-          <div className="movie-grid">
-            {this.state.favorites.map((movie) => this.renderCard(movie))}
-          </div>
-          {this.state.favorites.length >= 30 && (
-            <button
-              disabled={this.state.busy}
-              onClick={() => {
-                void this.loadFavorites()
-              }}
-            >
-              {this.t('more')}
-            </button>
-          )}
-        </section>
+        {this.renderFavorites()}
         <section className="password-settings">
           <h2>{this.t('changePassword')}</h2>
           <form onSubmit={this.password.bind(this)}>
@@ -2837,9 +2950,13 @@ export class Mainflix extends Component<Props, State> {
           </a>
           {this.state.user && this.state.group && (
             <nav
+              className="desktop-navigation"
               aria-label="Mainflix"
               onFocus={(event) =>
-                event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+                event.target.scrollIntoView({
+                  block: 'nearest',
+                  inline: 'nearest',
+                })
               }
             >
               {(
@@ -2895,6 +3012,18 @@ export class Mainflix extends Component<Props, State> {
               </summary>
               <div className="profile-menu-panel">
                 <button onClick={() => this.navigate('profile')}>{this.t('goToProfile')}</button>
+                {this.state.group &&
+                  (
+                    ['history', 'reviews', 'about', ...(this.canManage ? ['admin'] : [])] as Tab[]
+                  ).map((tab) => (
+                    <button
+                      className="mobile-menu-link"
+                      key={tab}
+                      onClick={() => this.navigate(tab)}
+                    >
+                      {this.t(tab === 'admin' ? 'adminNav' : tab)}
+                    </button>
+                  ))}
                 <button disabled={this.state.busy} onClick={this.chooseGroups.bind(this)}>
                   {this.t('switchGroup')}
                 </button>
@@ -2986,6 +3115,8 @@ export class Mainflix extends Component<Props, State> {
                   {this.renderSearch()}
                   {this.renderDiscovery()}
                 </>
+              ) : this.state.tab === 'favorites' ? (
+                this.renderFavorites()
               ) : this.state.tab === 'history' ? (
                 this.renderHistory()
               ) : this.state.tab === 'reviews' ? (
@@ -3000,6 +3131,33 @@ export class Mainflix extends Component<Props, State> {
             </>
           )}
         </main>
+        {this.state.user && this.state.group && !this.state.resetToken && (
+          <nav className="mobile-navigation" aria-label={this.t('mobileNavigation')}>
+            {(
+              [
+                ['catalogue', 'moviesNav', 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],
+                ['week', 'roundNav', 'M12 8v4l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0'],
+                [
+                  'favorites',
+                  'favorites',
+                  'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z',
+                ],
+                ['profile', 'profileNav', 'M20 21a8 8 0 0 0-16 0M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0'],
+              ] as const
+            ).map(([tab, label, path]) => (
+              <button
+                key={tab}
+                aria-current={this.state.tab === tab ? 'page' : undefined}
+                onClick={() => this.navigate(tab)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d={path} />
+                </svg>
+                <span>{this.t(label)}</span>
+              </button>
+            ))}
+          </nav>
+        )}
         <footer>
           <p>{this.t('tagline')}</p>
           <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">

@@ -113,7 +113,8 @@ for (const engine of [chromium, webkit])
         .where('title', '=', 'Smoke Film B').execute()
       const page = await f.page(true)
       await f.login(page, 'friend1')
-      await page.getByRole('button', { name: 'Catalogue', exact: true }).click()
+      const navigation = page.getByRole('navigation', { name: 'Mobile navigation', exact: true })
+      await navigation.getByRole('button', { name: 'Movies', exact: true }).click()
       const card = page.locator('#movie-catalogue .movie-card')
         .filter({ has: page.getByRole('heading', { name: 'Smoke Film A', exact: true }) })
       const nominate = card.getByRole('button', { name: 'Nominate', exact: true })
@@ -122,9 +123,34 @@ for (const engine of [chromium, webkit])
       const nomination = await nominate.boundingBox()
       const favorites = await favorite.boundingBox()
       assert.ok(nomination && favorites)
-      const gap = favorites.y - nomination.y - nomination.height
+      const gap = favorites.x - nomination.x - nomination.width
       assert.ok(gap >= 0 && gap <= 8, `Movie action gap is ${gap}px`)
+      assert.ok(Math.abs(favorites.y - nomination.y) < 1, 'Movie actions share one row')
       assert.ok(favorites.height >= 44)
+      await favorite.tap()
+      await card.getByRole('button', { name: 'Remove from favorites', exact: true }).waitFor()
+      await navigation.getByRole('button', { name: 'Favorites', exact: true }).tap()
+      await page.locator('#profile-favorites').waitFor()
+      const saved = page.locator('main .movie-card').filter({ has: page.getByRole('heading', { name: 'Smoke Film A', exact: true }) })
+      assert.equal(await saved.getByRole('button', { name: 'Remove from favorites', exact: true }).getAttribute('aria-pressed'), 'true')
+      await saved.getByRole('button', { name: 'Remove from favorites', exact: true }).tap()
+      await page.getByText('You have no favorite movies yet.', { exact: true }).waitFor()
+      await navigation.getByRole('button', { name: 'Profile', exact: true }).tap()
+      await page.getByRole('heading', { name: 'My profile', exact: true }).waitFor()
+      assert.equal(await navigation.getByRole('button', { name: 'Profile', exact: true }).getAttribute('aria-current'), 'page')
+      await navigation.getByRole('button', { name: 'Round', exact: true }).tap()
+      await page.locator('.party-panel').waitFor()
+      await page.locator('.profile-menu > summary').tap()
+      await page.locator('.profile-menu-panel').getByRole('button', { name: 'History', exact: true }).tap()
+      await page.getByText('No previous rounds yet', { exact: true }).waitFor()
+      await navigation.getByRole('button', { name: 'Movies', exact: true }).tap()
+      await card.getByRole('button', { name: 'Nominate', exact: true }).tap()
+      await card.getByRole('button', { name: 'Nominated', exact: true }).waitFor()
+      for (const width of [320, 375, 393]) {
+        await page.setViewportSize({ width, height: 852 })
+        assert.equal(await page.locator('.movie-actions button').evaluateAll(buttons => buttons.every(button => button.scrollWidth <= button.clientWidth && button.getBoundingClientRect().height >= 44)), true, `Card actions fit at ${width}px`)
+      }
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
       await page.screenshot({ path: `/tmp/mainflix-movie-actions-${engine.name()}.png`, fullPage: true })
     } finally {
       await f.close()
@@ -150,7 +176,7 @@ for (const engine of [chromium, webkit])
       await f.login(page, 'friend1')
       await page.locator('.group-toolbar').getByRole('button', { name: 'Switch group', exact: true }).click()
       await page.getByRole('button', { name: 'Leave test', exact: true }).click()
-      await page.getByRole('button', { name: 'Catalogue', exact: true }).click()
+      await page.getByRole('button', { name: /^(Catalogue|Movies)$/ }).click()
       await page.locator('#movie-catalogue').getByRole('button', { name: 'Toggle film', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await dialog.getByRole('button', { name: "I've watched it", exact: true }).click()
@@ -233,7 +259,7 @@ test('creators manage groups and availability opens only with movie details on d
       await f.database.client.insertInto('movies').values({
         group_id: group.id, tmdb_id: 42, title: 'Provider film', approval_status: 'approved',
       }).execute()
-      await page.getByRole('button', { name: 'Catalogue', exact: true }).click()
+      await page.getByRole('button', { name: /^(Catalogue|Movies)$/ }).click()
       await page.locator('#movie-catalogue').getByRole('button', { name: 'Provider film', exact: true }).click()
       const detail = page.getByRole('dialog')
       await detail.getByRole('img', { name: 'Netflix', exact: true }).waitFor()
@@ -250,7 +276,8 @@ test('creators manage groups and availability opens only with movie details on d
       await guest.getByRole('button', { name: groupName, exact: true }).click()
       await guest.locator('.group-toolbar strong').getByText(groupName, { exact: true }).waitFor()
       assert.equal(await guest.getByRole('navigation', { name: 'Mainflix' }).getByRole('button', { name: 'Admin', exact: true }).count(), 0)
-      await page.getByRole('navigation', { name: 'Mainflix' }).getByRole('button', { name: 'Admin', exact: true }).click()
+      if (mobile) await page.locator('.profile-menu > summary').click()
+      await page.getByRole('button', { name: 'Admin', exact: true }).click()
       const settings = page.locator('section[aria-labelledby="group-settings"]')
       await settings.getByText('@friend1', { exact: true }).waitFor()
       await settings.getByLabel('Group name', { exact: true }).fill(`${groupName} renamed`)
@@ -1273,7 +1300,7 @@ test(
         }),
         page.getByLabel('Language / Idioma').selectOption('es'),
       ])
-      await page.getByRole('button', { name: 'Catálogo', exact: true }).click()
+      await page.getByRole('button', { name: /^(Catálogo|Películas)$/ }).click()
       await page.getByRole('heading', { name: 'Buscar películas', exact: true }).waitFor()
       await page.screenshot({ path: '/tmp/mainflix-iphone-se-catalogue.png', fullPage: true })
       await page.setViewportSize({ width: 320, height: 568 })
@@ -1294,14 +1321,14 @@ test(
           false,
           `Catalogue overflow at ${width}×${height}`,
         )
-        await page.getByRole('button', { name: 'Esta semana', exact: true }).click()
+        await page.getByRole('button', { name: /^(Esta semana|Ronda)$/ }).click()
         assert.equal(
           await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
           false,
           `Weekly page overflow at ${width}×${height}`,
         )
         await page.screenshot({ path: `/tmp/mainflix-week-${width}x${height}.png`, fullPage: true })
-        await page.getByRole('button', { name: 'Catálogo', exact: true }).click()
+        await page.getByRole('button', { name: /^(Catálogo|Películas)$/ }).click()
       }
     } finally {
       await f.close()
@@ -1325,10 +1352,7 @@ test(
       assert.equal(await toast.evaluate((element) => getComputedStyle(element).position), 'fixed')
       await toast.waitFor({ state: 'hidden', timeout: 6500 })
       await f.login(owner, 'friend1')
-      await owner
-        .locator('.group-toolbar')
-        .getByRole('button', { name: 'Switch group', exact: true })
-        .click()
+      await owner.locator('.group-toolbar').getByRole('button', { name: 'Switch group', exact: true }).click()
       await owner.getByRole('button', { name: 'Create new group', exact: true }).click()
       await owner.getByLabel('Group name', { exact: true }).fill('🍿 Family')
       await owner.getByRole('button', { name: 'Create group', exact: true }).click()
@@ -1384,10 +1408,7 @@ test(
         .locator('#movie-catalogue')
         .getByRole('button', { name: 'Family only film', exact: true })
         .waitFor()
-      await guest
-        .locator('.group-toolbar')
-        .getByRole('button', { name: 'Switch group', exact: true })
-        .click()
+      await guest.locator('.group-toolbar').getByRole('button', { name: 'Switch group', exact: true }).click()
       await guest.getByRole('button', { name: 'Friends', exact: true }).click()
       await guest.locator('.group-toolbar strong').getByText('Friends', { exact: true }).waitFor()
       assert.equal(
