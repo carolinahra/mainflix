@@ -4,6 +4,87 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Mainflix } from '../src/app.js'
 import { I18n } from '../src/i18n.js'
 import type { Container } from '../src/container.js'
+import { ApiException } from '../src/api.js'
+
+test('group management is creator-only and confirms destructive actions', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const container = { i18n: new I18n('en') }
+  const app = new Mainflix({ container: container as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'admin',
+    user: {
+      id: 1,
+      username: 'creator',
+      name: 'Creator',
+      email: null,
+      avatar: null,
+      is_admin: false,
+    },
+    group: { id: 1, name: 'Movie nights', is_owner: true, can_vote: true },
+    groupMembers: [
+      { id: 1, username: 'creator', name: 'Creator', avatar: null },
+      { id: 2, username: 'guest', name: 'Guest', avatar: null },
+    ],
+  }
+  for (const [language, rename, remove, deletion] of [
+    ['en', 'Rename group', 'Remove member', 'Delete group'],
+    ['es', 'Renombrar grupo', 'Expulsar miembro', 'Eliminar grupo'],
+  ] as const) {
+    container.i18n = new I18n(language)
+    let markup = renderToStaticMarkup(app.render())
+    assert.ok(markup.includes(rename))
+    assert.equal(markup.split(`>${remove}</button>`).length - 1, 1)
+    assert.ok(markup.includes(deletion))
+    assert.doesNotMatch(markup, /role="alert"/)
+    app.state.groupAction = { type: 'delete' }
+    markup = renderToStaticMarkup(app.render())
+    assert.match(markup, /role="alert"/)
+    assert.ok(markup.includes(language === 'es' ? 'permanentemente' : 'permanently'))
+    app.state.groupAction = { type: 'kick', member: app.state.groupMembers[1]! }
+    assert.ok(renderToStaticMarkup(app.render()).includes('@guest'))
+    app.state.groupAction = null
+  }
+  app.state.group!.is_owner = false
+  const markup = renderToStaticMarkup(app.render())
+  assert.doesNotMatch(markup, /Renombrar grupo|Expulsar miembro|Eliminar grupo/)
+})
+
+test('a removed member loses cached group data when polling reports forbidden access', async (context) => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({
+    container: {
+      i18n: new I18n('en'),
+      api: {
+        groupId: 1,
+        request: async (path: string) => {
+          if (path === '/rounds/current') throw new ApiException('FORBIDDEN', 403)
+          assert.equal(path, '/groups')
+          return []
+        },
+      },
+    } as unknown as Container,
+  })
+  app.state = {
+    ...app.state,
+    user: { id: 1, name: 'Viewer', username: 'viewer', email: null, avatar: null, is_admin: false },
+    group: { id: 1, name: 'Old group', is_owner: false, can_vote: true },
+  }
+  context.mock.method(
+    app,
+    'setState',
+    (update: object | ((state: typeof app.state) => object), callback?: () => void) => {
+      app.state = { ...app.state, ...(typeof update === 'function' ? update(app.state) : update) }
+      callback?.()
+    },
+  )
+  await app['refreshRound']()
+  assert.equal(app.state.group, null)
+  assert.equal(app.state.round, null)
+  assert.equal(app.state.user?.id, 1)
+  assert.deepEqual(app.state.groupMembers, [])
+})
 
 test('the weekly pick and movie dialog show subscription and rental icons with JustWatch credit', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })

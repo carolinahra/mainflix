@@ -559,6 +559,10 @@ progress::-moz-progress-bar {
 .watch-providers {
   margin: 1rem 0;
 }
+.danger {
+  color: #ffb4b4;
+  border-color: #9c4646;
+}
 .watch-providers h3 {
   margin: 0 0 0.5rem;
   font-size: 0.95rem;

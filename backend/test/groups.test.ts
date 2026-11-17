@@ -27,7 +27,7 @@ class GroupsFixture {
     return result.headers['set-cookie']![0]!.split(';')[0]!
   }
   call(
-    method: 'get' | 'post' | 'put' | 'patch',
+    method: 'get' | 'post' | 'put' | 'patch' | 'delete',
     path: string,
     cookie?: string,
     groupId?: number,
@@ -49,6 +49,222 @@ class GroupsFixture {
     return { user, cookie, group }
   }
 }
+
+test('only the creator can rename a group, list its members and remove another member', async () => {
+  const f = new GroupsFixture()
+  const { cookie, group, user } = await f.owner()
+  const guest = await f.container.userService.create(null, 'guest', 'Guest', 'abcdef')
+  await f.container.groupRepository.join(
+    guest.id,
+    group.id,
+    '2026-11-16',
+    TestDatabase.database.client,
+  )
+  const guestCookie = await f.login('guest')
+  await f.call('get', `/groups/${group.id}/members`).expect(401)
+  for (const method of ['patch', 'delete'] as const)
+    await f
+      .call(
+        method,
+        `/groups/${group.id}`,
+        guestCookie,
+        undefined,
+        method === 'patch' ? { name: 'Hijacked' } : {},
+      )
+      .expect(403)
+  await f.call('get', `/groups/${group.id}/members`, guestCookie).expect(403)
+  await f
+    .call('delete', `/groups/${group.id}/members/${user.id}`, guestCookie, undefined, {})
+    .expect(403)
+  await f.call('patch', `/groups/${group.id}`, cookie, undefined, { name: '  ' }).expect(400)
+  const renamed = (
+    await f
+      .call('patch', `/groups/${group.id}`, cookie, undefined, { name: ' 🎄 Movie nights ' })
+      .expect(200)
+  ).body
+  assert.equal(renamed.name, '🎄 Movie nights')
+  assert.equal(
+    (await f.call('get', '/groups', guestCookie)).body.find(
+      (entry: { id: number }) => entry.id === group.id,
+    ).name,
+    '🎄 Movie nights',
+  )
+  const members = (await f.call('get', `/groups/${group.id}/members`, cookie).expect(200)).body
+  assert.deepEqual(
+    members.map((member: { id: number }) => member.id),
+    [user.id, guest.id],
+  )
+  assert.ok(members.every((member: object) => !('email' in member) && !('password_hash' in member)))
+  await f
+    .call('delete', `/groups/${group.id}/members/${user.id}`, cookie, undefined, {})
+    .expect(400)
+  await f.call('delete', `/groups/${group.id}/members/99999`, cookie, undefined, {}).expect(404)
+  await f
+    .call('put', '/rounds/2026-11-16/response', guestCookie, group.id, { movieId: null })
+    .expect(200)
+  await f
+    .call('delete', `/groups/${group.id}/members/${guest.id}`, cookie, undefined, {})
+    .expect(204)
+  assert.ok(
+    !(await f.call('get', '/groups', guestCookie)).body.some(
+      (entry: { id: number }) => entry.id === group.id,
+    ),
+  )
+  await f.call('get', '/rounds/current', guestCookie, group.id).expect(403)
+  assert.equal(
+    (
+      await TestDatabase.pool.query(
+        'SELECT count(*) FROM round_responses WHERE group_id=$1 AND user_id=$2',
+        [group.id, guest.id],
+      )
+    ).rows[0].count,
+    '0',
+  )
+  assert.equal((await f.call('get', '/auth/me', guestCookie)).body.id, guest.id)
+})
+
+test('removing a member keeps selected nominations and reviews and finishes their pending survey', async () => {
+  const f = new GroupsFixture()
+  const { cookie, group, user } = await f.owner()
+  const guest = await f.container.userService.create(null, 'guest', 'Guest', 'abcdef')
+  await f.container.groupRepository.join(
+    guest.id,
+    group.id,
+    '2026-11-16',
+    TestDatabase.database.client,
+  )
+  const guestCookie = await f.login('guest')
+  const movie = (
+    await f.call('post', '/movies', cookie, group.id, { title: 'Selected film' }).expect(201)
+  ).body
+  await f
+    .call('put', '/rounds/2026-11-16/response', cookie, group.id, { movieId: movie.id })
+    .expect(200)
+  await f
+    .call('put', '/rounds/2026-11-16/response', guestCookie, group.id, { movieId: movie.id })
+    .expect(200)
+  await f.call('post', '/rounds/2026-11-16/draw', cookie, group.id).expect(200)
+  await f.call('put', `/movies/${movie.id}/watched`, guestCookie, group.id, {}).expect(204)
+  await f
+    .call('put', `/movies/${movie.id}/review`, guestCookie, group.id, {
+      rating: 4,
+      text: 'Keep this review',
+    })
+    .expect(204)
+  await f
+    .call('delete', `/groups/${group.id}/members/${guest.id}`, cookie, undefined, {})
+    .expect(204)
+  const current = (await f.call('get', '/rounds/current', cookie, group.id).expect(200)).body
+  assert.equal(current.winner.id, movie.id)
+  assert.equal(current.nominations[0].count, 2)
+  assert.equal(
+    current.survey.participants.find((member: { id: number }) => member.id === guest.id).completed,
+    true,
+  )
+  const revealed = (
+    await f.call('post', '/rounds/2026-11-16/survey', cookie, group.id, { skip: true }).expect(200)
+  ).body
+  assert.equal(revealed.revealed, true)
+  assert.deepEqual(
+    revealed.responses.map((response: { user_id: number }) => response.user_id),
+    [user.id, guest.id],
+  )
+  assert.equal(
+    (
+      await TestDatabase.pool.query('SELECT text FROM reviews WHERE movie_id=$1 AND user_id=$2', [
+        movie.id,
+        guest.id,
+      ])
+    ).rows[0].text,
+    'Keep this review',
+  )
+})
+
+test('deleting a group removes only its data and invitations while keeping accounts and other groups', async () => {
+  const f = new GroupsFixture()
+  const { cookie, group, user } = await f.owner()
+  const other = (
+    await f.call('post', '/groups', cookie, undefined, { name: 'Keep this group' }).expect(201)
+  ).body
+  const movie = (
+    await f.call('post', '/movies', cookie, group.id, { title: 'Delete this film' }).expect(201)
+  ).body
+  const kept = (
+    await f.call('post', '/movies', cookie, other.id, { title: 'Keep this film' }).expect(201)
+  ).body
+  await f.call('put', `/movies/${kept.id}/watched`, cookie, other.id, {}).expect(204)
+  await f
+    .call('put', `/movies/${kept.id}/review`, cookie, other.id, {
+      rating: 4,
+      text: 'Keep this review',
+    })
+    .expect(204)
+  await f.call('put', `/movies/${kept.id}/favorite`, cookie, other.id, {}).expect(204)
+  await f
+    .call('put', '/rounds/2026-11-16/response', cookie, group.id, { movieId: movie.id })
+    .expect(200)
+  await f.call('post', '/rounds/2026-11-16/draw', cookie, group.id).expect(200)
+  await f.call('put', `/movies/${movie.id}/watched`, cookie, group.id, {}).expect(204)
+  await f
+    .call('put', `/movies/${movie.id}/review`, cookie, group.id, { rating: 5, text: 'Review' })
+    .expect(204)
+  await f.call('put', `/movies/${movie.id}/favorite`, cookie, group.id, {}).expect(204)
+  const token = (
+    await f.call('post', '/invitations', cookie, undefined, { groupId: group.id }).expect(201)
+  ).body.url.split('#invite=')[1]
+  await f.call('delete', `/groups/${group.id}`, cookie, undefined, {}).expect(204)
+  assert.deepEqual(
+    (await f.call('get', '/groups', cookie)).body.map((entry: { id: number }) => entry.id),
+    [1, other.id],
+  )
+  assert.equal((await f.call('get', '/auth/me', cookie)).body.id, user.id)
+  await f.call('get', `/invitations/${token}`).expect(400)
+  await f.call('get', '/rounds/current', cookie, group.id).expect(403)
+  assert.equal(
+    (await f.call('get', `/movies/${kept.id}`, cookie, other.id).expect(200)).body.movie.title,
+    'Keep this film',
+  )
+  assert.equal(
+    (await TestDatabase.pool.query('SELECT count(*) FROM movies WHERE id=$1', [movie.id])).rows[0]
+      .count,
+    '0',
+  )
+  for (const table of ['reviews', 'user_watched_movies', 'favorite_movies']) {
+    assert.equal(
+      (await TestDatabase.pool.query(`SELECT count(*) FROM ${table} WHERE movie_id=$1`, [movie.id]))
+        .rows[0].count,
+      '0',
+    )
+    assert.equal(
+      (await TestDatabase.pool.query(`SELECT count(*) FROM ${table} WHERE movie_id=$1`, [kept.id]))
+        .rows[0].count,
+      '1',
+    )
+  }
+  assert.equal(
+    (
+      await TestDatabase.pool.query(
+        'SELECT count(*) FROM round_survey_responses WHERE group_id=$1',
+        [group.id],
+      )
+    ).rows[0].count,
+    '0',
+  )
+})
+
+test('deleting the original group does not break account provisioning or recreate that group', async () => {
+  const f = new GroupsFixture()
+  await f.container.userService.create(null, 'admin', 'Admin', 'abcdef', true)
+  const cookie = await f.login('admin')
+  await f.call('delete', '/groups/1', cookie, undefined, {}).expect(204)
+  const newcomer = await f.container.userService.create(null, 'newcomer', 'Newcomer', 'abcdef')
+  assert.deepEqual(await f.container.groupService.list(newcomer.id), [])
+  assert.equal(
+    (await TestDatabase.pool.query('SELECT count(*) FROM groups WHERE id=1')).rows[0].count,
+    '0',
+  )
+  await f.call('post', '/groups', cookie, undefined, { name: 'New start' }).expect(201)
+})
 
 test('named groups and app-only signup keep a new account out of the inviter groups', async () => {
   const f = new GroupsFixture()

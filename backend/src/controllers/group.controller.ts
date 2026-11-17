@@ -18,6 +18,14 @@ export class GroupController {
     this.router.post('/auth/register', this.register.bind(this))
     this.router.get('/groups', auth.authenticate.bind(auth), this.list.bind(this))
     this.router.post('/groups', auth.authenticate.bind(auth), this.create.bind(this))
+    this.router.get('/groups/:id/members', auth.authenticate.bind(auth), this.members.bind(this))
+    this.router.patch('/groups/:id', auth.authenticate.bind(auth), this.rename.bind(this))
+    this.router.delete('/groups/:id', auth.authenticate.bind(auth), this.delete.bind(this))
+    this.router.delete(
+      '/groups/:id/members/:userId',
+      auth.authenticate.bind(auth),
+      this.removeMember.bind(this),
+    )
     this.router.post('/invitations', auth.authenticate.bind(auth), this.invite.bind(this))
     this.router.post(
       '/invitations/:token/accept',
@@ -40,6 +48,34 @@ export class GroupController {
       .parse(req.body)
     await this.users.attempt(`group:create:${Http.user(res).id}`, 20)
     res.status(201).json(await this.groups.create(Http.user(res).id, name))
+  }
+  private async members(req: HttpRequest, res: HttpResponse): Promise<void> {
+    res.json(await this.groups.members(Http.user(res).id, Http.id.parse(req.params.id)))
+  }
+  private async rename(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const { name } = z
+      .object({ name: z.string().trim().min(1).max(80) })
+      .strict()
+      .parse(req.body)
+    res.json(await this.groups.rename(Http.user(res).id, Http.id.parse(req.params.id), name))
+  }
+  private async removeMember(req: HttpRequest, res: HttpResponse): Promise<void> {
+    z.object({})
+      .strict()
+      .parse(req.body ?? {})
+    await this.groups.removeMember(
+      Http.user(res).id,
+      Http.id.parse(req.params.id),
+      Http.id.parse(req.params.userId),
+    )
+    res.sendStatus(204)
+  }
+  private async delete(req: HttpRequest, res: HttpResponse): Promise<void> {
+    z.object({})
+      .strict()
+      .parse(req.body ?? {})
+    await this.groups.delete(Http.user(res).id, Http.id.parse(req.params.id))
+    res.sendStatus(204)
   }
   private async invite(req: HttpRequest, res: HttpResponse): Promise<void> {
     const { groupId } = z.object({ groupId: Http.id.optional() }).strict().parse(req.body)

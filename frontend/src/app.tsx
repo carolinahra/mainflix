@@ -19,6 +19,7 @@ import type {
   Review,
   ReviewedMovie,
   MovieWatchProviders,
+  Member,
 } from '../../backend/src/models/entities.js'
 
 type Film = Serialized<Movie>
@@ -28,6 +29,8 @@ interface Props {
   container: Container
 }
 interface State {
+  groupMembers: Member[]
+  groupAction: { type: 'delete' } | { type: 'kick'; member: Member } | null
   creatingGroup: boolean
   groups: Group[]
   group: Group | null
@@ -84,6 +87,8 @@ export class Mainflix extends Component<Props, State> {
   private searchController: AbortController | undefined
   private readonly browseControllers = new Map<MovieCategory, AbortController>()
   override state: State = {
+    groupMembers: [],
+    groupAction: null,
     creatingGroup: false,
     groups: [],
     group: null,
@@ -448,6 +453,8 @@ export class Mainflix extends Component<Props, State> {
     this.surveyDialog.current?.close()
     this.setState({
       user: null,
+      groupMembers: [],
+      groupAction: null,
       error: null,
       creatingGroup: false,
       groups: [],
@@ -576,6 +583,7 @@ export class Mainflix extends Component<Props, State> {
     } catch (error: unknown) {
       if (error instanceof ApiException && error.code === 'STALE_REQUEST') return
       if (error instanceof ApiException && error.status === 401) this.clearSession()
+      else if (error instanceof ApiException && error.status === 403) this.chooseGroups()
       else this.showError(error instanceof ApiException ? error.code : 'genericError')
     }
   }
@@ -1634,14 +1642,56 @@ export class Mainflix extends Component<Props, State> {
   }
   private async loadAdmin(): Promise<void> {
     const userId: number | undefined = this.state.user?.id
+    const groupId = this.state.group?.id
     await this.perform(async (): Promise<void> => {
-      const [pending, accounts] = await Promise.all([
+      const [pending, accounts, groupMembers] = await Promise.all([
         this.props.container.api.request<Film[]>('/admin/movies/pending?limit=100'),
         this.state.user?.is_admin
           ? this.props.container.api.request<User[]>('/admin/users')
           : Promise.resolve([]),
+        this.props.container.api.request<Member[]>(`/groups/${groupId}/members`),
       ])
-      if (this.state.user?.id === userId && this.canManage) this.setState({ pending, accounts })
+      if (this.state.user?.id === userId && this.state.group?.id === groupId && this.canManage)
+        this.setState({ pending, accounts, groupMembers })
+    })
+  }
+  private renameGroup(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const id = this.state.group?.id
+    if (!id || !this.canManage) return
+    const name = new FormData(event.currentTarget).get('name')
+    void this.perform(async () => {
+      const group = await this.props.container.api.request<Group>(`/groups/${id}`, 'PATCH', {
+        name,
+      })
+      if (this.state.group?.id === id)
+        this.setState((state) => ({
+          group,
+          groups: state.groups.map((entry) => (entry.id === id ? group : entry)),
+          message: 'groupRenamed',
+        }))
+    })
+  }
+  private confirmGroupAction(): void {
+    const group = this.state.group
+    const action = this.state.groupAction
+    if (!group || !action || !this.canManage) return
+    void this.perform(async () => {
+      const path =
+        action.type === 'delete'
+          ? `/groups/${group.id}`
+          : `/groups/${group.id}/members/${action.member.id}`
+      await this.props.container.api.request(path, 'DELETE', {})
+      if (this.state.group?.id !== group.id) return
+      if (action.type === 'delete') this.chooseGroups()
+      else {
+        this.setState((state) => ({
+          groupAction: null,
+          groupMembers: state.groupMembers.filter((member) => member.id !== action.member.id),
+          message: 'memberRemoved',
+        }))
+        await this.refreshRound()
+      }
     })
   }
   private updateMovie(id: number, patch: MoviePatch): void {
@@ -2376,6 +2426,74 @@ export class Mainflix extends Component<Props, State> {
     return (
       <section>
         <h1>{this.t('admin')}</h1>
+        <section aria-labelledby="group-settings">
+          <h2 id="group-settings">{this.t('manageGroup')}</h2>
+          <form
+            key={`${this.state.group!.id}-${this.state.group!.name}`}
+            onSubmit={this.renameGroup.bind(this)}
+          >
+            <label>
+              {this.t('groupName')}
+              <input name="name" defaultValue={this.state.group!.name} required maxLength={80} />
+            </label>
+            <button disabled={this.state.busy}>{this.t('renameGroup')}</button>
+          </form>
+          <h3>{this.t('groupMembers')}</h3>
+          {this.state.groupMembers.map((member) => (
+            <article className="account" key={member.id}>
+              <strong>{member.name}</strong>
+              <span>@{member.username}</span>
+              {member.id === this.state.user?.id ? (
+                <span className="muted">{this.t('groupCreator')}</span>
+              ) : (
+                <button
+                  className="danger"
+                  disabled={this.state.busy}
+                  onClick={() => this.setState({ groupAction: { type: 'kick', member } })}
+                >
+                  {this.t('removeMember')}
+                </button>
+              )}
+            </article>
+          ))}
+          <button
+            className="danger"
+            disabled={this.state.busy}
+            onClick={() => this.setState({ groupAction: { type: 'delete' } })}
+          >
+            {this.t('deleteGroup')}
+          </button>
+          {this.state.groupAction && (
+            <div className="notice" role="alert">
+              <p>
+                {this.state.groupAction.type === 'delete' ? (
+                  this.t('deleteGroupWarning')
+                ) : (
+                  <>
+                    {this.t('removeMemberWarning')} @{this.state.groupAction.member.username}
+                  </>
+                )}
+              </p>
+              <button
+                className="danger"
+                disabled={this.state.busy}
+                onClick={this.confirmGroupAction.bind(this)}
+              >
+                {this.t(
+                  this.state.groupAction.type === 'delete'
+                    ? 'confirmDeleteGroup'
+                    : 'confirmRemoveMember',
+                )}
+              </button>
+              <button
+                disabled={this.state.busy}
+                onClick={() => this.setState({ groupAction: null })}
+              >
+                {this.t('cancel')}
+              </button>
+            </div>
+          )}
+        </section>
         <h2>{this.t('pending')}</h2>
         <div className="movie-grid">
           {this.state.pending.map((movie) => this.renderCard(movie))}

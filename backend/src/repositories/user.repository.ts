@@ -19,6 +19,7 @@ export class UserRepository {
     db: Connection,
   ): Promise<void> {
     await this.database.lockGroup(db, 1)
+    if (!(await db.selectFrom('groups').select('id').where('id', '=', 1).executeTakeFirst())) return
     const started = await db
       .selectFrom('rounds')
       .select('week_start')

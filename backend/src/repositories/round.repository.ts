@@ -74,10 +74,17 @@ export class RoundRepository {
       .select(['r.user_id', 'u.name', 'r.movie_id', 'm.title'])
       .where('r.week_start', '=', week)
       .where('r.group_id', '=', this.groupId)
-      .innerJoin('group_members as gm', (join) =>
+      .innerJoin('rounds as round', (join) =>
+        join
+          .onRef('round.group_id', '=', 'r.group_id')
+          .onRef('round.week_start', '=', 'r.week_start'),
+      )
+      .leftJoin('group_members as gm', (join) =>
         join.onRef('gm.user_id', '=', 'r.user_id').onRef('gm.group_id', '=', 'r.group_id'),
       )
-      .where('gm.voting_from', '<=', week)
+      .where((eb) =>
+        eb.or([eb('gm.voting_from', '<=', week), eb('round.winner_id', 'is not', null)]),
+      )
       .orderBy('r.user_id')
       .execute()
   }
