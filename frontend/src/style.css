@@ -552,6 +552,11 @@ progress::-moz-progress-bar {
   font-size: 0.8rem;
   margin-top: auto;
 }
+@media (max-width: 760px) and (orientation: portrait) {
+  .movie-card > button:last-child:not(.poster-button) {
+    margin-top: 0;
+  }
+}
 .winner {
   max-width: 230px;
   margin: 1rem 0 2rem;

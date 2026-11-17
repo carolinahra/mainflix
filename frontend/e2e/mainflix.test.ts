@@ -103,6 +103,34 @@ class BrowserFixture {
   }
 }
 
+for (const engine of [chromium, webkit])
+  test(`movie actions stay together in mobile portrait in ${engine.name()}`, { timeout: 60_000 }, async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare(engine)
+      await f.database.client.updateTable('movies')
+        .set({ title: 'A much longer movie title that wraps across several lines on a narrow phone screen' })
+        .where('title', '=', 'Smoke Film B').execute()
+      const page = await f.page(true)
+      await f.login(page, 'friend1')
+      await page.getByRole('button', { name: 'Catalogue', exact: true }).click()
+      const card = page.locator('#movie-catalogue .movie-card')
+        .filter({ has: page.getByRole('heading', { name: 'Smoke Film A', exact: true }) })
+      const nominate = card.getByRole('button', { name: 'Nominate', exact: true })
+      const favorite = card.getByRole('button', { name: 'Add to favorites', exact: true })
+      await nominate.waitFor()
+      const nomination = await nominate.boundingBox()
+      const favorites = await favorite.boundingBox()
+      assert.ok(nomination && favorites)
+      const gap = favorites.y - nomination.y - nomination.height
+      assert.ok(gap >= 0 && gap <= 8, `Movie action gap is ${gap}px`)
+      assert.ok(favorites.height >= 44)
+      await page.screenshot({ path: `/tmp/mainflix-movie-actions-${engine.name()}.png`, fullPage: true })
+    } finally {
+      await f.close()
+    }
+  })
+
 test('creators manage groups and availability opens only with movie details on desktop and iPhone SE', { timeout: 120_000 }, async () => {
   const f = new BrowserFixture()
   try {
