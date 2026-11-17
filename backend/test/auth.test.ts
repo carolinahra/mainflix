@@ -58,7 +58,7 @@ test('profile migration preserves existing accounts, sessions and review ratings
   )
   await pool.query('DROP TABLE favorite_movies')
   await pool.query('ALTER TABLE users DROP COLUMN avatar')
-  await pool.query('DELETE FROM schema_migrations WHERE version=5')
+  await pool.query('DELETE FROM schema_migrations WHERE version IN (5,8)')
   const sources = await Promise.all(
     [
       '001_initial.sql',
@@ -75,6 +75,37 @@ test('profile migration preserves existing accounts, sessions and review ratings
     (await pool.query('SELECT rating,text FROM reviews WHERE movie_id=$1', [movie.id])).rows,
     [{ rating: 3.5, text: 'Preserved' }],
   )
+})
+
+test('JPEG thumbnail migration preserves existing WebP photos and sessions', async () => {
+  const { auth, user } = await TestDatabase.auth()
+  const avatar = 'data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA'
+  await auth.update(user.id, { avatar })
+  const session = await auth.login(user.username, password)
+  await pool.query('ALTER TABLE users DROP CONSTRAINT users_avatar_check')
+  await pool.query(`ALTER TABLE users ADD CONSTRAINT users_avatar_check CHECK (
+    avatar IS NULL OR (length(avatar) <= 22000 AND avatar ~ '^data:image/webp;base64,[A-Za-z0-9+/]+={0,2}$')
+  )`)
+  await pool.query('DELETE FROM schema_migrations WHERE version=8')
+  const sources = await Promise.all(
+    [
+      '001_initial.sql',
+      '002_usernames.sql',
+      '003_optional_email.sql',
+      '004_half_point_reviews.sql',
+      '005_profiles_favorites.sql',
+      '006_groups.sql',
+      '007_anonymous_nominations_survey.sql',
+      '008_jpeg_avatars.sql',
+    ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
+  )
+  await TestDatabase.database.migrate(sources)
+  await TestDatabase.database.migrate(sources)
+  assert.equal((await auth.user(session.token))?.avatar, avatar)
+  const jpeg = await readFile(new URL('./fixtures/avatar.jpg', import.meta.url))
+  const jpegAvatar = `data:image/jpeg;base64,${jpeg.toString('base64')}`
+  await auth.update(user.id, { avatar: jpegAvatar })
+  assert.equal((await auth.user(session.token))?.avatar, jpegAvatar)
 })
 
 test('optional email migration preserves existing accounts and sessions and runs repeatedly', async () => {

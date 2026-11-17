@@ -1,6 +1,7 @@
 import { beforeEach, after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import request from 'supertest'
+import { readFile } from 'node:fs/promises'
 import { Container } from '../src/container.js'
 import { Clock } from '../src/services/clock.js'
 import { Tmdb } from '../src/services/tmdb.js'
@@ -263,6 +264,21 @@ test('profiles edit only the signed-in user and preserve sessions and username u
   const avatar = 'data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA'
   await update({ avatar }).expect(200)
   assert.equal((await request(app).get('/api/auth/me').set('Cookie', cookie)).body.avatar, avatar)
+  const jpeg = await readFile(new URL('./fixtures/avatar.jpg', import.meta.url))
+  const jpegAvatar = `data:image/jpeg;base64,${jpeg.toString('base64')}`
+  await update({ avatar: jpegAvatar }).expect(200)
+  assert.equal(
+    (await request(app).get('/api/auth/me').set('Cookie', cookie)).body.avatar,
+    jpegAvatar,
+  )
+  const oversizedJpeg = Buffer.from(jpeg)
+  const frame = oversizedJpeg.indexOf(Buffer.from([0xff, 0xc0]))
+  assert.ok(frame > 0)
+  oversizedJpeg.writeUInt16BE(256, frame + 7)
+  const invalidSegment = Buffer.from(jpeg)
+  invalidSegment.writeUInt16BE(0, 4)
+  for (const invalid of [oversizedJpeg, invalidSegment, jpeg.subarray(0, jpeg.length - 2)])
+    await update({ avatar: `data:image/jpeg;base64,${invalid.toString('base64')}` }).expect(400)
   const oversized = Buffer.from(avatar.split(',')[1]!, 'base64')
   oversized.writeUInt16LE(256, 26)
   await update({ avatar: `data:image/webp;base64,${oversized.toString('base64')}` }).expect(400)

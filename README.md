@@ -97,7 +97,7 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 
 The circular avatar menu opens **My profile**, which contains display name, unique login username, profile photo, personal reviews, private favorite movies, and password change. Renaming an account preserves its sessions, nominations and reviews; use the new username on the next login. Changing the password still signs out all sessions.
 
-Photos accept PNG/JPEG/WebP up to 5 MB in the browser, are center-cropped to a 128×128 WebP thumbnail, and stored in PostgreSQL (maximum 16 KiB encoded image data). Removing a photo restores the default creeper picture. No file-storage service is needed for these small thumbnails.
+Photos accept PNG/JPEG/WebP up to 20 MB in the browser, are center-cropped to a 128×128 WebP thumbnail (JPEG on browsers without WebP encoding, including iPhone), and stored in PostgreSQL (maximum 16 KiB encoded image data). The picker requests JPEG first so iOS can convert HEIC photos from the photo library to a compatible format. Removing a photo restores the default creeper picture. No file-storage service is needed for these small thumbnails. Apply `008_jpeg_avatars.sql` using `npm run db:migrate` before deploying the JPEG fallback; existing photos and sessions are preserved.
 
 Favorite movies can be added from local/TMDB cards or movie details and removed from details or My profile. A TMDB favorite imports metadata, but never nominates the film, marks it watched, or restores rejected/excluded eligibility. Favorites and personal reviews are scoped to the authenticated account.
 
@@ -130,7 +130,7 @@ All routes except health, login, reset, logout, invitation preview and invitatio
 | GET | `/api/auth/favorites` | Your private favorites across groups; supports limit/offset |
 | GET | `/api/auth/reviews` | Your own reviews across groups; supports limit/offset |
 | POST | `/api/auth/login` | `{identifier,password}` (username or email; legacy `{email,password}` also accepted) → user + cookie |
-| PATCH | `/api/auth/me` | Any nonempty subset of `{name,username,avatar}`; avatar is a bounded WebP data URL or `null` |
+| PATCH | `/api/auth/me` | Any nonempty subset of `{name,username,avatar}`; avatar is a bounded WebP/JPEG data URL or `null` |
 | GET | `/api/auth/me` | Current user |
 | POST | `/api/auth/logout` | Revoke cookie session |
 | PUT | `/api/auth/password` | `{currentPassword,password}`; revokes sessions |

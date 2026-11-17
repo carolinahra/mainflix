@@ -37,6 +37,7 @@ export class TestDatabase {
           '005_profiles_favorites.sql',
           '006_groups.sql',
           '007_anonymous_nominations_survey.sql',
+          '008_jpeg_avatars.sql',
         ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )

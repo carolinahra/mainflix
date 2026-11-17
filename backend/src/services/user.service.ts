@@ -110,7 +110,7 @@ export class UserService {
         avatar: z
           .string()
           .max(22000)
-          .regex(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/)
+          .regex(/^data:image\/(?:webp|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/)
           .nullable()
           .optional(),
       })
@@ -118,34 +118,54 @@ export class UserService {
       .refine((value) => Object.keys(value).length > 0)
       .parse(input)
     if (values.avatar) {
-      const data = Buffer.from(values.avatar.slice('data:image/webp;base64,'.length), 'base64')
-      if (
-        data.length < 20 ||
-        data.length > 16384 ||
-        data.toString('ascii', 0, 4) !== 'RIFF' ||
-        data.toString('ascii', 8, 12) !== 'WEBP' ||
-        data.readUInt32LE(4) !== data.length - 8 ||
-        !['VP8 ', 'VP8L', 'VP8X'].includes(data.toString('ascii', 12, 16))
-      )
+      const data = Buffer.from(values.avatar.slice(values.avatar.indexOf(',') + 1), 'base64')
+      if (data.length < 20 || data.length > 16384)
         throw new ValidationException('Invalid profile thumbnail')
-      const kind = data.toString('ascii', 12, 16)
       let width = 0
       let height = 0
-      // Bound decoded dimensions as well as bytes; see the WebP RIFF container specification.
-      if (
-        kind === 'VP8 ' &&
-        data.length >= 30 &&
-        data.subarray(23, 26).equals(Buffer.from([0x9d, 0x01, 0x2a]))
-      ) {
-        width = data.readUInt16LE(26) & 0x3fff
-        height = data.readUInt16LE(28) & 0x3fff
-      } else if (kind === 'VP8L' && data.length >= 25 && data[20] === 0x2f) {
-        const bits = data.readUInt32LE(21)
-        width = (bits & 0x3fff) + 1
-        height = ((bits >>> 14) & 0x3fff) + 1
-      } else if (kind === 'VP8X' && data.length >= 30 && !(data[20]! & 2)) {
-        width = data.readUIntLE(24, 3) + 1
-        height = data.readUIntLE(27, 3) + 1
+      if (values.avatar.startsWith('data:image/jpeg;')) {
+        if (data.readUInt16BE(0) !== 0xffd8 || data.readUInt16BE(data.length - 2) !== 0xffd9)
+          throw new ValidationException('Invalid profile thumbnail')
+        for (let offset = 2; offset + 4 <= data.length;) {
+          if (data[offset] !== 0xff) throw new ValidationException('Invalid profile thumbnail')
+          const marker = data[offset + 1]
+          if (marker === 0xda || marker === 0xd9) break
+          const length = data.readUInt16BE(offset + 2)
+          if (length < 2 || offset + 2 + length > data.length)
+            throw new ValidationException('Invalid profile thumbnail')
+          if (marker === 0xc0 || marker === 0xc2) {
+            if (length < 8 || data[offset + 4] !== 8)
+              throw new ValidationException('Invalid profile thumbnail')
+            height = data.readUInt16BE(offset + 5)
+            width = data.readUInt16BE(offset + 7)
+            break
+          }
+          offset += length + 2
+        }
+      } else {
+        if (
+          data.toString('ascii', 0, 4) !== 'RIFF' ||
+          data.toString('ascii', 8, 12) !== 'WEBP' ||
+          data.readUInt32LE(4) !== data.length - 8 ||
+          !['VP8 ', 'VP8L', 'VP8X'].includes(data.toString('ascii', 12, 16))
+        )
+          throw new ValidationException('Invalid profile thumbnail')
+        const kind = data.toString('ascii', 12, 16)
+        if (
+          kind === 'VP8 ' &&
+          data.length >= 30 &&
+          data.subarray(23, 26).equals(Buffer.from([0x9d, 0x01, 0x2a]))
+        ) {
+          width = data.readUInt16LE(26) & 0x3fff
+          height = data.readUInt16LE(28) & 0x3fff
+        } else if (kind === 'VP8L' && data.length >= 25 && data[20] === 0x2f) {
+          const bits = data.readUInt32LE(21)
+          width = (bits & 0x3fff) + 1
+          height = ((bits >>> 14) & 0x3fff) + 1
+        } else if (kind === 'VP8X' && data.length >= 30 && !(data[20]! & 2)) {
+          width = data.readUIntLE(24, 3) + 1
+          height = data.readUIntLE(27, 3) + 1
+        }
       }
       if (width < 1 || height < 1 || width > 128 || height > 128)
         throw new ValidationException('Profile thumbnail must be at most 128 by 128 pixels')

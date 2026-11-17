@@ -702,7 +702,7 @@ export class Mainflix extends Component<Props, State> {
     void this.perform(async () => {
       if (
         !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
-        file.size > 5 * 1024 * 1024
+        file.size > 20 * 1024 * 1024
       )
         throw new ApiException('invalidAvatar', 400)
       let image: ImageBitmap
@@ -728,8 +728,11 @@ export class Mainflix extends Component<Props, State> {
           128,
           128,
         )
-        const avatar = canvas.toDataURL('image/webp', 0.8)
-        if (!avatar.startsWith('data:image/webp;base64,') || avatar.length > 21869)
+        let avatar = canvas.toDataURL('image/webp', 0.8)
+        // iPhone returns PNG when its canvas cannot encode WebP.
+        if (!avatar.startsWith('data:image/webp;base64,'))
+          avatar = canvas.toDataURL('image/jpeg', 0.8)
+        if (!/^data:image\/(?:webp|jpeg);base64,/.test(avatar) || avatar.length > 21869)
           throw new ApiException('invalidAvatar', 400)
         if (this.state.user?.id === userId) await this.updateProfile({ avatar })
       } finally {
@@ -2340,7 +2343,7 @@ export class Mainflix extends Component<Props, State> {
               {this.t('profilePhoto')}
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept="image/jpeg,image/png,image/webp"
                 disabled={this.state.busy}
                 onChange={this.uploadAvatar.bind(this)}
               />

@@ -36,6 +36,7 @@ class BrowserFixture {
           '005_profiles_favorites.sql',
           '006_groups.sql',
           '007_anonymous_nominations_survey.sql',
+          '008_jpeg_avatars.sql',
         ].map((file) => readFile(new URL(`../../db/${file}`, import.meta.url), 'utf8')),
       ),
     )
@@ -369,6 +370,38 @@ test(
   },
 )
 
+for (const engine of [chromium, webkit])
+  test(`profile photo JPEG fallback persists in ${engine.name()}`, { timeout: 60_000 }, async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare(engine)
+      const page = await f.page(true)
+      await f.login(page, 'friend1')
+      await f.profile(page)
+      await page.evaluate(() => {
+        const encode = HTMLCanvasElement.prototype.toDataURL
+        HTMLCanvasElement.prototype.toDataURL = function (type, quality) {
+          return encode.call(this, type === 'image/webp' ? 'image/png' : type, quality)
+        }
+      })
+      await page.getByLabel('Profile photo', { exact: true }).setInputFiles({
+        name: 'avatar.jpg',
+        mimeType: 'image/jpeg',
+        buffer: await readFile(new URL('../../backend/test/fixtures/avatar.jpg', import.meta.url)),
+      })
+      const image = page.locator('.profile-photo > img[src^="data:image/jpeg"]')
+      await image.waitFor({ timeout: 5000 })
+      const saved = await image.getAttribute('src')
+      assert.equal(await page.locator('.profile-menu summary img').getAttribute('src'), saved)
+      await page.reload()
+      await page.getByRole('button', { name: 'Mainflix', exact: true }).click()
+      await f.profile(page)
+      assert.equal(await page.locator('.profile-photo > img').getAttribute('src'), saved)
+    } finally {
+      await f.close()
+    }
+  })
+
 test(
   'profile edits, photo uploads, private reviews, favorites, and password changes persist',
   { timeout: 90_000 },
@@ -396,11 +429,22 @@ test(
       await page.getByRole('button', { name: 'Save profile', exact: true }).click()
       await page.getByRole('status').filter({ hasText: 'Profile saved.' }).waitFor()
       await page.getByLabel('Profile photo', { exact: true }).setInputFiles({
+        name: 'too-large.png',
+        mimeType: 'image/png',
+        buffer: Buffer.alloc(20 * 1024 * 1024 + 1),
+      })
+      await page.locator('.error-toast').waitFor()
+      assert.equal(
+        await page.locator('.profile-photo > img').getAttribute('src'),
+        '/art/creeper-avatar.png',
+      )
+      const photo = await readFile(new URL('../public/art/diamond.png', import.meta.url))
+      await page.getByLabel('Profile photo', { exact: true }).setInputFiles({
         name: 'diamond.png',
         mimeType: 'image/png',
-        buffer: await readFile(new URL('../public/art/diamond.png', import.meta.url)),
+        buffer: Buffer.concat([photo, Buffer.alloc(20 * 1024 * 1024 - photo.length)]),
       })
-      await page.locator('.profile-photo > img[src^="data:image/webp"]').waitFor()
+      await page.locator('.profile-photo > img[src^="data:image/webp"]').waitFor({ timeout: 5000 })
       const avatar = await page.locator('.profile-photo > img').getAttribute('src')
       assert.ok(avatar?.startsWith('data:image/webp;base64,'))
       assert.equal(await page.locator('.profile-menu summary img').getAttribute('src'), avatar)
