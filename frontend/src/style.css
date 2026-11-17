@@ -1702,6 +1702,16 @@ footer a {
     margin: 1rem 0;
   }
 }
+@media (max-width: 480px) and (orientation: portrait) {
+  .group-toolbar {
+    gap: 0.4rem;
+  }
+  .group-toolbar button {
+    flex-grow: 0;
+    font-size: 0.75rem;
+    padding: 0.35rem 0.5rem;
+  }
+}
 
 .survey-dialog {
   width: min(44rem, calc(100% - 1.5rem));
