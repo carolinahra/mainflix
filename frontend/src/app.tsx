@@ -1817,7 +1817,9 @@ export class Mainflix extends Component<Props, State> {
           </button>
         </h3>
         <p className="muted">{movie.release_year}</p>
-        <span className="badge">{this.t(movie.approval_status)}</span>
+        {movie.approval_status !== 'approved' && (
+          <span className="badge">{this.t(movie.approval_status)}</span>
+        )}
         {!movie.eligible && <p className="muted">{this.t('excluded')}</p>}
         {canNominate && (
           <button disabled={this.state.busy} onClick={(): void => this.nominate(movie.id)}>
@@ -2630,7 +2632,9 @@ export class Mainflix extends Component<Props, State> {
         <h2>
           {movie.title} <small>{movie.release_year}</small>
         </h2>
-        <p className="muted">{this.t(movie.approval_status)}</p>
+        {movie.approval_status !== 'approved' && (
+          <p className="muted">{this.t(movie.approval_status)}</p>
+        )}
         <p>{movie.overview}</p>
         {movie.tmdb_id && this.renderWatchProviders(movie.tmdb_id)}
         <p>
