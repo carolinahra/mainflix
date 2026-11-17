@@ -16,6 +16,8 @@ After signing in, choose a group or use the circular **+** button to reveal the 
 
 Membership is flexible. If a person joins before the first response, they can vote that week. If voting has started, they can view the group immediately and vote from the next Madrid week. The response count determines readiness from that week's eligible members, with no fixed four-person requirement. The group owner manages its movies and invitations; ownership never grants access to another person's account password reset.
 
+Use **Leave group** to leave after confirmation. Past reviews and saved draw results stay in the group. If the owner leaves, ownership transfers at random to a remaining member. The last member must use the existing **Delete group** action instead, with its deletion warning.
+
 Apply `006_groups.sql` using the existing `npm run db:migrate` before running the updated applications. It preserves account IDs, passwords, sessions, favorites, movie IDs, reviews, nominations and saved winners, and places existing activity in an initial **Mainflix** group owned by the existing app administrator. Back up the existing database before applying the migration. No hosted database is migrated automatically.
 
 Exceptions appear as accessible toast notifications and disappear after five seconds. A new exception restarts that timer; errors raised inside a movie dialog stay visible above the dialog.
@@ -124,6 +126,7 @@ All routes except health, login, reset, logout, invitation preview and invitatio
 |---|---|---|
 | GET | `/api/health` | Process health (does not check the DB) |
 | GET / POST | `/api/groups` | List your groups / create `{name}` |
+| DELETE | `/api/groups/:id/members/:userId` | Leave your own membership or, as owner, remove another member; departing owners transfer ownership randomly; the last member must delete the group instead |
 | POST | `/api/invitations` | `{}` for an app invitation, or `{groupId}` for an owner-issued group invitation → private URL + expiry |
 | GET | `/api/invitations/:token` | Public preview: group name (or null) + expiry |
 | POST | `/api/invitations/:token/accept` | Signed-in account accepts the link |

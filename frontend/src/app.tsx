@@ -29,6 +29,7 @@ interface Props {
   container: Container
 }
 interface State {
+  leavingGroup: boolean
   unmarkingWatched: boolean
   groupMembers: Member[]
   groupAction: { type: 'delete' } | { type: 'kick'; member: Member } | null
@@ -88,6 +89,7 @@ export class Mainflix extends Component<Props, State> {
   private searchController: AbortController | undefined
   private readonly browseControllers = new Map<MovieCategory, AbortController>()
   override state: State = {
+    leavingGroup: false,
     unmarkingWatched: false,
     groupMembers: [],
     groupAction: null,
@@ -157,6 +159,25 @@ export class Mainflix extends Component<Props, State> {
     this.clearSession()
     this.setState({ user }, () => {
       void this.perform(() => this.loadGroups())
+    })
+  }
+  private leaveGroup(): void {
+    const group = this.state.group
+    const user = this.state.user
+    if (!group || !user) return
+    void this.perform(async () => {
+      try {
+        await this.props.container.api.request(
+          `/groups/${group.id}/members/${user.id}`,
+          'DELETE',
+          {},
+        )
+      } catch (error: unknown) {
+        if (group.is_owner && error instanceof ApiException && error.code === 'VALIDATION_ERROR')
+          throw new ApiException('lastGroupMember', 400)
+        throw error
+      }
+      if (this.state.group?.id === group.id) this.chooseGroups()
     })
   }
   private createGroup(event: FormEvent<HTMLFormElement>): void {
@@ -455,6 +476,7 @@ export class Mainflix extends Component<Props, State> {
     this.surveyDialog.current?.close()
     this.setState({
       user: null,
+      leavingGroup: false,
       unmarkingWatched: false,
       groupMembers: [],
       groupAction: null,
@@ -2918,6 +2940,12 @@ export class Mainflix extends Component<Props, State> {
                 <button disabled={this.state.busy} onClick={this.chooseGroups.bind(this)}>
                   {this.t('switchGroup')}
                 </button>
+                <button
+                  disabled={this.state.busy}
+                  onClick={() => this.setState({ leavingGroup: true })}
+                >
+                  {this.t('leaveGroup')}
+                </button>
                 {this.state.group.is_owner && (
                   <button
                     disabled={this.state.busy}
@@ -2930,6 +2958,21 @@ export class Mainflix extends Component<Props, State> {
                   <span>{this.t('votingNextWeek')}</span>
                 )}
               </section>
+              {this.state.leavingGroup && (
+                <section className="notice" role="alert">
+                  <p>{this.t('leaveGroupWarning')}</p>
+                  {this.state.group.is_owner && <p>{this.t('leaveOwnerWarning')}</p>}
+                  <button disabled={this.state.busy} onClick={this.leaveGroup.bind(this)}>
+                    {this.t('confirmLeaveGroup')}
+                  </button>
+                  <button
+                    disabled={this.state.busy}
+                    onClick={() => this.setState({ leavingGroup: false })}
+                  >
+                    {this.t('cancel')}
+                  </button>
+                </section>
+              )}
               {this.renderInvitationLink()}
               {this.state.tab === 'week' ? (
                 this.renderWeek()

@@ -47,6 +47,23 @@ export class GroupRepository {
   async rename(groupId: number, name: string, db: Connection): Promise<void> {
     await db.updateTable('groups').set({ name }).where('id', '=', groupId).execute()
   }
+  async replaceOwner(groupId: number, leavingUserId: number, db: Connection): Promise<boolean> {
+    const member = await db
+      .selectFrom('group_members')
+      .select('user_id')
+      .where('group_id', '=', groupId)
+      .where('user_id', '!=', leavingUserId)
+      .orderBy(sql`random()`)
+      .limit(1)
+      .executeTakeFirst()
+    if (!member) return false
+    await db
+      .updateTable('groups')
+      .set({ owner_id: member.user_id })
+      .where('id', '=', groupId)
+      .execute()
+    return true
+  }
   async removeMember(groupId: number, userId: number, now: Date, db: Connection): Promise<void> {
     const result = await db
       .deleteFrom('group_members')

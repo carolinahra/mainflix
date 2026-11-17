@@ -95,9 +95,6 @@ test('only the creator can rename a group, list its members and remove another m
     [user.id, guest.id],
   )
   assert.ok(members.every((member: object) => !('email' in member) && !('password_hash' in member)))
-  await f
-    .call('delete', `/groups/${group.id}/members/${user.id}`, cookie, undefined, {})
-    .expect(400)
   await f.call('delete', `/groups/${group.id}/members/99999`, cookie, undefined, {}).expect(404)
   await f
     .call('put', '/rounds/2026-11-16/response', guestCookie, group.id, { movieId: null })
@@ -121,6 +118,81 @@ test('only the creator can rename a group, list its members and remove another m
     '0',
   )
   assert.equal((await f.call('get', '/auth/me', guestCookie)).body.id, guest.id)
+})
+
+test('members can leave their own group without removing another member or account', async () => {
+  const f = new GroupsFixture()
+  const { cookie, group, user: owner } = await f.owner()
+  const member = await f.container.userService.create(null, 'leaving', 'Leaving', 'abcdef')
+  await f.container.groupRepository.join(
+    member.id,
+    group.id,
+    '2026-11-16',
+    TestDatabase.database.client,
+  )
+  const memberCookie = await f.login('leaving')
+  await f
+    .call('put', '/rounds/2026-11-16/response', memberCookie, group.id, { movieId: null })
+    .expect(200)
+  await f
+    .call('delete', `/groups/${group.id}/members/${owner.id}`, memberCookie, undefined, {})
+    .expect(403)
+  await f
+    .call('delete', `/groups/${group.id}/members/${member.id}`, memberCookie, undefined, {})
+    .expect(204)
+  await f.call('get', '/rounds/current', memberCookie, group.id).expect(403)
+  assert.equal((await f.call('get', '/auth/me', memberCookie).expect(200)).body.id, member.id)
+  const members = (await f.call('get', `/groups/${group.id}/members`, cookie).expect(200)).body
+  assert.deepEqual(
+    members.map((m: { id: number }) => m.id),
+    [owner.id],
+  )
+  assert.equal(
+    (
+      await TestDatabase.pool.query(
+        'SELECT count(*) FROM round_responses WHERE group_id=$1 AND user_id=$2',
+        [group.id, member.id],
+      )
+    ).rows[0].count,
+    '0',
+  )
+})
+
+test('departing owners transfer ownership to a remaining member and concurrent departures keep an owner', async () => {
+  const f = new GroupsFixture()
+  const { cookie, group, user: owner } = await f.owner()
+  const second = await f.container.userService.create(null, 'second', 'Second', 'abcdef')
+  const third = await f.container.userService.create(null, 'third', 'Third', 'abcdef')
+  for (const member of [second, third])
+    await f.container.groupRepository.join(
+      member.id,
+      group.id,
+      '2026-11-16',
+      TestDatabase.database.client,
+    )
+  const secondCookie = await f.login('second')
+  const results = await Promise.all([
+    f.call('delete', `/groups/${group.id}/members/${owner.id}`, cookie, undefined, {}),
+    f.call('delete', `/groups/${group.id}/members/${second.id}`, secondCookie, undefined, {}),
+  ])
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [204, 204],
+  )
+  const thirdCookie = await f.login('third')
+  const saved = await TestDatabase.database.client
+    .selectFrom('groups')
+    .select('owner_id')
+    .where('id', '=', group.id)
+    .executeTakeFirstOrThrow()
+  assert.equal(saved.owner_id, third.id)
+  await f
+    .call('patch', `/groups/${group.id}`, thirdCookie, undefined, { name: 'Still managed' })
+    .expect(200)
+  await f
+    .call('delete', `/groups/${group.id}/members/${third.id}`, thirdCookie, undefined, {})
+    .expect(400)
+  assert.equal((await f.call('get', `/groups/${group.id}/members`, thirdCookie)).body.length, 1)
 })
 
 test('removing a member keeps selected nominations and reviews and finishes their pending survey', async () => {

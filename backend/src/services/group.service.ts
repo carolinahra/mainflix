@@ -56,8 +56,14 @@ export class GroupService {
   async removeMember(userId: number, groupId: number, memberId: number): Promise<void> {
     await this.database.transaction(async (db) => {
       await this.database.lockGroup(db, groupId)
-      if (!(await this.membership(userId, groupId, db)).is_owner) throw new ForbiddenException()
-      if (userId === memberId) throw new ValidationException()
+      const group = await this.membership(userId, groupId, db)
+      if (userId !== memberId && !group.is_owner) throw new ForbiddenException()
+      if (
+        userId === memberId &&
+        group.is_owner &&
+        !(await this.repository.replaceOwner(groupId, userId, db))
+      )
+        throw new ValidationException('The last member must delete the group instead')
       await this.repository.removeMember(groupId, memberId, this.clock.now(), db)
     })
   }
