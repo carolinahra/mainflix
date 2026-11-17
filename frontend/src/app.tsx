@@ -2497,7 +2497,6 @@ export class Mainflix extends Component<Props, State> {
             </div>
           </section>
         )}
-        {this.renderWelcome()}
         {this.renderBrowseRow('christmas')}
         {this.renderBrowseRow('popular')}
         {this.renderSearch()}
@@ -3260,6 +3259,7 @@ export class Mainflix extends Component<Props, State> {
             )
           ) : (
             <>
+              {this.state.tab === 'week' && this.renderWelcome()}
               <section className="group-toolbar">
                 <div className="group-identity">
                   <strong>{this.state.group.name}</strong>
