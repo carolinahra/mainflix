@@ -76,15 +76,23 @@ export class MovieService {
     language: Language,
     limit: number,
     offset: number,
+    userId?: number,
   ): Promise<MovieSearch> {
     const local: Movie[] = await this.repository.search(query, limit, offset)
-    if (!query) return { local, remote: [], remoteError: null }
+    const [watched, favorites] =
+      userId === undefined
+        ? [[], []]
+        : await Promise.all([
+            this.repository.watchedIds(userId),
+            this.repository.favoriteIds(userId),
+          ])
+    if (!query) return { local, remote: [], remoteError: null, watched, favorites }
     try {
       const remote: MovieMetadata[] = await this.tmdb.search(query, language)
-      return { local, remote, remoteError: null }
+      return { local, remote, remoteError: null, watched, favorites }
     } catch (error: unknown) {
       if (!(error instanceof AppException)) throw error
-      return { local, remote: [], remoteError: error.code }
+      return { local, remote: [], remoteError: error.code, watched, favorites }
     }
   }
   async find(id: number, language?: Language): Promise<Movie> {

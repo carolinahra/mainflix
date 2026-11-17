@@ -46,7 +46,7 @@ export class MovieController {
   private async search(req: HttpRequest, res: HttpResponse): Promise<void> {
     const q: string = z.string().trim().max(200).default('').parse(req.query.q)
     const { limit, offset } = Http.pagination.parse(req.query)
-    res.json(await this.movies.search(q, Http.language(req), limit, offset))
+    res.json(await this.movies.search(q, Http.language(req), limit, offset, Http.user(res).id))
   }
   private async submit(req: HttpRequest, res: HttpResponse): Promise<void> {
     const body = z

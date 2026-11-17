@@ -75,6 +75,28 @@ export class MovieRepository {
       .offset(offset)
       .execute()
   }
+  async watchedIds(userId: number): Promise<number[]> {
+    const rows = await this.database.client
+      .selectFrom('user_watched_movies as w')
+      .innerJoin('movies as m', 'm.id', 'w.movie_id')
+      .select('m.id')
+      .where('m.group_id', '=', this.groupId)
+      .where('w.user_id', '=', userId)
+      .orderBy('m.id')
+      .execute()
+    return rows.map((row) => row.id)
+  }
+  async favoriteIds(userId: number): Promise<number[]> {
+    const rows = await this.database.client
+      .selectFrom('favorite_movies as f')
+      .innerJoin('movies as m', 'm.id', 'f.movie_id')
+      .select('m.id')
+      .where('m.group_id', '=', this.groupId)
+      .where('f.user_id', '=', userId)
+      .orderBy('m.id')
+      .execute()
+    return rows.map((row) => row.id)
+  }
   async pending(limit: number, offset: number): Promise<Movie[]> {
     return this.database.client
       .selectFrom('movies')

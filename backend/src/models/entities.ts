@@ -69,6 +69,8 @@ export interface MovieSearch {
   local: Movie[]
   remote: MovieMetadata[]
   remoteError: string | null
+  watched?: number[]
+  favorites?: number[]
 }
 export const movieCategories = [
   'featured',

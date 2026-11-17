@@ -26,6 +26,45 @@ class Upstream {
   }
 }
 
+test('catalogue watched filters use only the current viewer and group, independent of pagination', async () => {
+  const [viewer, other] = await TestDatabase.users()
+  assert.ok(viewer && other)
+  const mine = await TestDatabase.movie('A watched')
+  const theirs = await TestDatabase.movie('B watched by someone else')
+  const group = await pool.query("INSERT INTO groups(name) VALUES ('Other group') RETURNING id")
+  const elsewhere = await pool.query(
+    'INSERT INTO movies(group_id,title) VALUES($1,$2) RETURNING id',
+    [group.rows[0].id, 'Elsewhere'],
+  )
+  await pool.query(
+    'INSERT INTO user_watched_movies(user_id,movie_id) VALUES($1,$2),($3,$4),($1,$5)',
+    [viewer.id, mine.id, other.id, theirs.id, elsewhere.rows[0].id],
+  )
+  await pool.query('INSERT INTO favorite_movies(user_id,movie_id) VALUES($1,$2),($3,$4),($1,$5)', [
+    viewer.id,
+    mine.id,
+    other.id,
+    theirs.id,
+    elsewhere.rows[0].id,
+  ])
+  const movies = new MovieService(
+    TestDatabase.database,
+    new MovieRepository(TestDatabase.database),
+    new RoundRepository(TestDatabase.database),
+    new Tmdb(''),
+    new Clock(),
+  )
+  const result = await movies.search('', 'en', 1, 1, viewer.id)
+  assert.deepEqual(
+    result.local.map((movie) => movie.id),
+    [theirs.id],
+  )
+  assert.deepEqual(result.watched, [mine.id])
+  assert.deepEqual(result.favorites, [mine.id])
+  assert.deepEqual((await movies.search('', 'en', 30, 0, other.id)).watched, [theirs.id])
+  assert.deepEqual((await movies.search('', 'en', 30, 0, other.id)).favorites, [theirs.id])
+})
+
 test('recently added orders by creation date with stable pagination even without TMDB', async () => {
   const first = await TestDatabase.movie('Z first')
   const latest = await TestDatabase.movie('A latest')
