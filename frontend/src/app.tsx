@@ -2254,7 +2254,6 @@ export class Mainflix extends Component<Props, State> {
   private renderSearch(): ReactNode {
     return (
       <section className="catalogue-section" id="movie-catalogue">
-        {this.renderRandom()}
         <h2>{this.t('search')}</h2>
         <label>
           {this.t('search')}
@@ -2449,9 +2448,12 @@ export class Mainflix extends Component<Props, State> {
             <p className="muted">{this.t('resetTime')}</p>
           </div>
           {round.status === 'collecting' && this.canVote && (
-            <button disabled={this.state.busy} onClick={(): void => this.nominate(null)}>
-              {this.t('skip')}
-            </button>
+            <div className="round-actions">
+              <button disabled={this.state.busy} onClick={(): void => this.nominate(null)}>
+                {this.t('skip')}
+              </button>
+              {this.renderRandom()}
+            </div>
           )}
           {round.status === 'ready' && (
             <button

@@ -268,8 +268,11 @@ h3 {
   gap: 0.8rem;
   margin-top: 1.8rem;
 }
-.random-picker {
-  margin-bottom: 1.5rem;
+.round-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem;
 }
 .random-trigger {
   display: inline-flex;
