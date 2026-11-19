@@ -206,9 +206,12 @@ test('removing a member keeps selected nominations and reviews and finishes thei
     TestDatabase.database.client,
   )
   const guestCookie = await f.login('guest')
-  const movie = (
-    await f.call('post', '/movies', cookie, group.id, { title: 'Selected film' }).expect(201)
-  ).body
+  const movie = await f.container
+    .forGroup(group.id)
+    .movieRepository.create(
+      { title: 'Selected film', approval_status: 'approved' },
+      TestDatabase.database.client,
+    )
   await f
     .call('put', '/rounds/2026-11-16/response', cookie, group.id, { movieId: movie.id })
     .expect(200)
@@ -258,12 +261,18 @@ test('deleting a group removes only its data and invitations while keeping accou
   const other = (
     await f.call('post', '/groups', cookie, undefined, { name: 'Keep this group' }).expect(201)
   ).body
-  const movie = (
-    await f.call('post', '/movies', cookie, group.id, { title: 'Delete this film' }).expect(201)
-  ).body
-  const kept = (
-    await f.call('post', '/movies', cookie, other.id, { title: 'Keep this film' }).expect(201)
-  ).body
+  const movie = await f.container
+    .forGroup(group.id)
+    .movieRepository.create(
+      { title: 'Delete this film', approval_status: 'approved' },
+      TestDatabase.database.client,
+    )
+  const kept = await f.container
+    .forGroup(other.id)
+    .movieRepository.create(
+      { title: 'Keep this film', approval_status: 'approved' },
+      TestDatabase.database.client,
+    )
   await f.call('put', `/movies/${kept.id}/watched`, cookie, other.id, {}).expect(204)
   await f
     .call('put', `/movies/${kept.id}/review`, cookie, other.id, {
@@ -422,15 +431,18 @@ test('groups isolate catalogues, reviews, nominations and draws; owners can vote
   const other = (
     await f.call('post', '/groups', cookie, undefined, { name: 'Friends' }).expect(201)
   ).body
-  const movie = (
-    await f.call('post', '/movies', cookie, group.id, { title: 'Family movie' }).expect(201)
-  ).body
+  const movie = await f.container
+    .forGroup(group.id)
+    .movieRepository.create(
+      { title: 'Family movie', approval_status: 'approved' },
+      TestDatabase.database.client,
+    )
   assert.deepEqual((await f.call('get', '/movies', cookie, other.id).expect(200)).body.local, [])
   await f.call('get', `/movies/${movie.id}`, cookie, other.id).expect(404)
   await f.call('put', `/movies/${movie.id}/review`, cookie, other.id, { rating: 4 }).expect(404)
   await f
     .call('patch', `/admin/movies/${movie.id}`, cookie, other.id, { eligible: false })
-    .expect(404)
+    .expect(403)
   const current = (await f.call('get', '/rounds/current', cookie, group.id).expect(200)).body
   assert.equal(current.members.length, 1)
   const ready = await f
@@ -452,18 +464,21 @@ test('groups isolate catalogues, reviews, nominations and draws; owners can vote
 
 test('joining after the first response defers voting until the next Madrid week', async () => {
   const f = new GroupsFixture()
-  const { cookie, group } = await f.owner()
+  const { cookie, group, user } = await f.owner()
   await f.container.userService.create(null, 'joining', 'Joining', 'abcdef')
   const guest = await f.login('joining')
-  const movie = (await f.call('post', '/movies', cookie, group.id, { title: 'Movie' })).body
+  const movie = await f.container
+    .forGroup(group.id)
+    .movieRepository.create(
+      { title: 'Movie', approval_status: 'approved' },
+      TestDatabase.database.client,
+    )
   const week = '2026-11-16'
   await f
     .call('put', `/rounds/${week}/response`, cookie, group.id, { movieId: movie.id })
     .expect(200)
   // Removing all nominations must not reopen this week's electorate.
-  await f
-    .call('patch', `/admin/movies/${movie.id}`, cookie, group.id, { eligible: false })
-    .expect(200)
+  await f.container.forGroup(group.id).movieService.update(user.id, movie.id, { eligible: false })
   const invite = (
     await f.call('post', '/invitations', cookie, undefined, { groupId: group.id })
   ).body.url.split('#invite=')[1]
@@ -541,8 +556,12 @@ test('personal favorites and own reviews span groups without exposing other user
   const f = new GroupsFixture()
   const { cookie, group } = await f.owner()
   const other = (await f.call('post', '/groups', cookie, undefined, { name: 'Friends' })).body
-  const movie = (await f.call('post', '/movies', cookie, group.id, { title: 'Private favorite' }))
-    .body
+  const movie = await f.container
+    .forGroup(group.id)
+    .movieRepository.create(
+      { title: 'Private favorite', approval_status: 'approved' },
+      TestDatabase.database.client,
+    )
   await f.call('put', `/movies/${movie.id}/favorite`, cookie, group.id, {}).expect(204)
   await f.call('put', `/movies/${movie.id}/watched`, cookie, group.id, {}).expect(204)
   await f
@@ -638,8 +657,12 @@ test('group migration preserves legacy credentials, sessions, movies, favorites,
 test('late joiners enter review completion checks when their voting week begins', async () => {
   const f = new GroupsFixture()
   const { cookie, group } = await f.owner()
-  const movie = (await f.call('post', '/movies', cookie, group.id, { title: 'Already reviewed' }))
-    .body
+  const movie = await f.container
+    .forGroup(group.id)
+    .movieRepository.create(
+      { title: 'Already reviewed', approval_status: 'approved' },
+      TestDatabase.database.client,
+    )
   await f
     .call('put', '/rounds/2026-11-16/response', cookie, group.id, { movieId: movie.id })
     .expect(200)

@@ -838,6 +838,7 @@ export class Mainflix extends Component<Props, State> {
         message: 'favoriteAdded',
       }))
       this.loadDiscovery()
+      if (this.state.remoteDetail?.tmdb_id === tmdbId) this.openMovie(movie.id)
     })
   }
   private navigate(tab: Tab): void {
@@ -849,7 +850,8 @@ export class Mainflix extends Component<Props, State> {
     if (tab === 'profile') void this.loadProfile()
     if (tab === 'favorites') void this.loadFavorites(false)
     if (tab === 'admin') void this.loadAdmin()
-    if (tab === 'catalogue' || tab === 'week') void this.search(this.state.query)
+    if (tab === 'catalogue' || tab === 'week' || (tab === 'admin' && this.state.user?.is_admin))
+      void this.search(this.state.query)
   }
   private searchChanged(event: ChangeEvent<HTMLInputElement>): void {
     const query: string = event.target.value
@@ -1043,6 +1045,12 @@ export class Mainflix extends Component<Props, State> {
       this.cancelRandom()
       await this.search(this.state.query)
       this.loadDiscovery()
+      if (this.state.remoteDetail?.tmdb_id === tmdbId) {
+        const id = updated.responses.find(
+          (response) => response.user_id === this.state.user?.id,
+        )?.movie_id
+        if (id) this.openMovie(id)
+      }
     })
   }
   private renderRandom(): ReactNode {
@@ -1593,36 +1601,6 @@ export class Mainflix extends Component<Props, State> {
       </section>
     )
   }
-  private submitMovie(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    const form: HTMLFormElement = event.currentTarget
-    const data: FormData = new FormData(form)
-    void this.perform(async (): Promise<void> => {
-      await this.props.container.api.request('/movies', 'POST', {
-        title: data.get('title'),
-        releaseYear: data.get('year') ? Number(data.get('year')) : null,
-      })
-      form.reset()
-      this.setState({ message: 'submitted' })
-      await this.search(this.state.query)
-      this.loadDiscovery()
-    })
-  }
-  private importMovie(tmdbId: number): void {
-    void this.perform(async (): Promise<void> => {
-      const movie = await this.props.container.api.request<Film>(
-        `/movies?language=${this.state.language}`,
-        'POST',
-        {
-          tmdbId,
-        },
-      )
-      this.setState({ message: 'submitted' })
-      await this.search(this.state.query)
-      this.loadDiscovery()
-      if (this.state.remoteDetail?.tmdb_id === tmdbId) this.openMovie(movie.id)
-    })
-  }
   private openMovie(id: number): void {
     void this.perform(async (): Promise<void> => {
       const personalMovie =
@@ -1754,13 +1732,21 @@ export class Mainflix extends Component<Props, State> {
     const groupId = this.state.group?.id
     await this.perform(async (): Promise<void> => {
       const [pending, accounts, groupMembers] = await Promise.all([
-        this.props.container.api.request<Film[]>('/admin/movies/pending?limit=100'),
+        this.state.user?.is_admin
+          ? this.props.container.api.request<Film[]>('/admin/movies/pending?limit=100')
+          : Promise.resolve([]),
         this.state.user?.is_admin
           ? this.props.container.api.request<User[]>('/admin/users')
           : Promise.resolve([]),
-        this.props.container.api.request<Member[]>(`/groups/${groupId}/members`),
+        this.canManage
+          ? this.props.container.api.request<Member[]>(`/groups/${groupId}/members`)
+          : Promise.resolve([]),
       ])
-      if (this.state.user?.id === userId && this.state.group?.id === groupId && this.canManage)
+      if (
+        this.state.user?.id === userId &&
+        this.state.group?.id === groupId &&
+        (this.canManage || this.state.user?.is_admin)
+      )
         this.setState({ pending, accounts, groupMembers })
     })
   }
@@ -1972,17 +1958,17 @@ export class Mainflix extends Component<Props, State> {
             </button>
           </h3>
           <div className="movie-actions">
-            <button
-              className="movie-nominate"
-              aria-label={this.t(canNominate ? 'nominate' : 'import')}
-              disabled={this.state.busy}
-              onClick={(): void =>
-                canNominate ? this.nominateTmdb(movie.tmdb_id) : this.importMovie(movie.tmdb_id)
-              }
-            >
-              <span aria-hidden="true">+</span>
-              {this.t(canNominate ? 'nominate' : 'addMovieAction')}
-            </button>
+            {canNominate && (
+              <button
+                className="movie-nominate"
+                aria-label={this.t('nominate')}
+                disabled={this.state.busy}
+                onClick={() => this.nominateTmdb(movie.tmdb_id)}
+              >
+                <span aria-hidden="true">+</span>
+                {this.t('nominate')}
+              </button>
+            )}
             <button
               className="movie-favorite"
               aria-label={this.t(favorite ? 'removeFavorite' : 'addFavorite')}
@@ -2364,20 +2350,6 @@ export class Mainflix extends Component<Props, State> {
             )
             .map((movie) => this.renderRemoteCard(movie))}
         </div>
-        <details>
-          <summary>{this.t('addMovie')}</summary>
-          <form onSubmit={this.submitMovie.bind(this)}>
-            <label>
-              {this.t('title')}
-              <input name="title" required maxLength={300} />
-            </label>
-            <label>
-              {this.t('year')}
-              <input name="year" type="number" min={1870} max={2200} />
-            </label>
-            <button disabled={this.state.busy}>{this.t('submit')}</button>
-          </form>
-        </details>
       </section>
     )
   }
@@ -2829,82 +2801,89 @@ export class Mainflix extends Component<Props, State> {
     )
   }
   private renderAdmin(): ReactNode {
-    if (!this.canManage) return this.renderWeek()
+    if (!this.canManage && !this.state.user?.is_admin) return this.renderWeek()
     return (
       <section>
         <h1>{this.t('admin')}</h1>
-        <section aria-labelledby="group-settings">
-          <h2 id="group-settings">{this.t('manageGroup')}</h2>
-          <form
-            key={`${this.state.group!.id}-${this.state.group!.name}`}
-            onSubmit={this.renameGroup.bind(this)}
-          >
-            <label>
-              {this.t('groupName')}
-              <input name="name" defaultValue={this.state.group!.name} required maxLength={80} />
-            </label>
-            <button disabled={this.state.busy}>{this.t('renameGroup')}</button>
-          </form>
-          <h3>{this.t('groupMembers')}</h3>
-          {this.state.groupMembers.map((member) => (
-            <article className="account" key={member.id}>
-              <strong>{member.name}</strong>
-              <span>@{member.username}</span>
-              {member.id === this.state.user?.id ? (
-                <span className="muted">{this.t('groupCreator')}</span>
-              ) : (
+        {this.canManage && (
+          <section aria-labelledby="group-settings">
+            <h2 id="group-settings">{this.t('manageGroup')}</h2>
+            <form
+              key={`${this.state.group!.id}-${this.state.group!.name}`}
+              onSubmit={this.renameGroup.bind(this)}
+            >
+              <label>
+                {this.t('groupName')}
+                <input name="name" defaultValue={this.state.group!.name} required maxLength={80} />
+              </label>
+              <button disabled={this.state.busy}>{this.t('renameGroup')}</button>
+            </form>
+            <h3>{this.t('groupMembers')}</h3>
+            {this.state.groupMembers.map((member) => (
+              <article className="account" key={member.id}>
+                <strong>{member.name}</strong>
+                <span>@{member.username}</span>
+                {member.id === this.state.user?.id ? (
+                  <span className="muted">{this.t('groupCreator')}</span>
+                ) : (
+                  <button
+                    className="danger"
+                    disabled={this.state.busy}
+                    onClick={() => this.setState({ groupAction: { type: 'kick', member } })}
+                  >
+                    {this.t('removeMember')}
+                  </button>
+                )}
+              </article>
+            ))}
+            <button
+              className="danger"
+              disabled={this.state.busy}
+              onClick={() => this.setState({ groupAction: { type: 'delete' } })}
+            >
+              {this.t('deleteGroup')}
+            </button>
+            {this.state.groupAction && (
+              <div className="notice" role="alert">
+                <p>
+                  {this.state.groupAction.type === 'delete' ? (
+                    this.t('deleteGroupWarning')
+                  ) : (
+                    <>
+                      {this.t('removeMemberWarning')} @{this.state.groupAction.member.username}
+                    </>
+                  )}
+                </p>
                 <button
                   className="danger"
                   disabled={this.state.busy}
-                  onClick={() => this.setState({ groupAction: { type: 'kick', member } })}
+                  onClick={this.confirmGroupAction.bind(this)}
                 >
-                  {this.t('removeMember')}
+                  {this.t(
+                    this.state.groupAction.type === 'delete'
+                      ? 'confirmDeleteGroup'
+                      : 'confirmRemoveMember',
+                  )}
                 </button>
-              )}
-            </article>
-          ))}
-          <button
-            className="danger"
-            disabled={this.state.busy}
-            onClick={() => this.setState({ groupAction: { type: 'delete' } })}
-          >
-            {this.t('deleteGroup')}
-          </button>
-          {this.state.groupAction && (
-            <div className="notice" role="alert">
-              <p>
-                {this.state.groupAction.type === 'delete' ? (
-                  this.t('deleteGroupWarning')
-                ) : (
-                  <>
-                    {this.t('removeMemberWarning')} @{this.state.groupAction.member.username}
-                  </>
-                )}
-              </p>
-              <button
-                className="danger"
-                disabled={this.state.busy}
-                onClick={this.confirmGroupAction.bind(this)}
-              >
-                {this.t(
-                  this.state.groupAction.type === 'delete'
-                    ? 'confirmDeleteGroup'
-                    : 'confirmRemoveMember',
-                )}
-              </button>
-              <button
-                disabled={this.state.busy}
-                onClick={() => this.setState({ groupAction: null })}
-              >
-                {this.t('cancel')}
-              </button>
+                <button
+                  disabled={this.state.busy}
+                  onClick={() => this.setState({ groupAction: null })}
+                >
+                  {this.t('cancel')}
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+        {this.state.user?.is_admin && (
+          <>
+            <h2>{this.t('pending')}</h2>
+            <div className="movie-grid">
+              {this.state.pending.map((movie) => this.renderCard(movie))}
             </div>
-          )}
-        </section>
-        <h2>{this.t('pending')}</h2>
-        <div className="movie-grid">
-          {this.state.pending.map((movie) => this.renderCard(movie))}
-        </div>
+            {this.renderSearch()}
+          </>
+        )}
         {this.state.user?.is_admin && <h2>{this.t('accounts')}</h2>}
         {this.state.accounts.map((user) => (
           <article className="account" key={user.id}>
@@ -3004,6 +2983,21 @@ export class Mainflix extends Component<Props, State> {
     const watched = detail?.watched ?? []
     const mine = reviews.find((r) => r.user_id === this.state.user?.id)
     const seen: boolean = watched.some((w) => w.user_id === this.state.user?.id)
+    const savedFavorite = this.state.favorites.find(
+      (entry) => entry.tmdb_id === movie.tmdb_id && entry.group_id === this.state.group?.id,
+    )
+    const favorite = detail?.favorite ?? Boolean(savedFavorite)
+    const canNominate =
+      this.canVote &&
+      this.state.round?.status === 'collecting' &&
+      (!detail || (detail.movie.eligible && detail.movie.approval_status === 'approved'))
+    const nominated = Boolean(
+      detail &&
+      this.state.round?.responses.some(
+        (response) =>
+          response.user_id === this.state.user?.id && response.movie_id === detail.movie.id,
+      ),
+    )
     const artwork = movie.backdrop_path ?? movie.poster_path
     const average = reviews.length
       ? (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(1)
@@ -3073,27 +3067,35 @@ export class Mainflix extends Component<Props, State> {
                   {this.t(seen ? 'watchedStatus' : 'watched')}
                 </button>
               )}
-              {detail ? (
+              {canNominate && (
                 <button
-                  className="cinema-favorite"
+                  className={detail ? 'secondary' : 'primary'}
                   disabled={this.state.busy}
-                  onClick={() => this.favorite(detail.movie, !detail.favorite)}
-                  aria-label={this.t(detail.favorite ? 'removeFavorite' : 'addFavorite')}
-                  aria-pressed={detail.favorite}
+                  aria-pressed={nominated}
+                  onClick={() =>
+                    detail ? this.nominate(detail.movie.id) : this.nominateTmdb(movie.tmdb_id!)
+                  }
                 >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />
-                  </svg>
-                </button>
-              ) : (
-                <button
-                  className="primary"
-                  disabled={this.state.busy}
-                  onClick={() => this.importMovie(movie.tmdb_id!)}
-                >
-                  + {this.t('import')}
+                  {this.t(nominated ? 'nominatedLabel' : 'nominate')}
                 </button>
               )}
+              <button
+                className="cinema-favorite"
+                disabled={this.state.busy}
+                onClick={() =>
+                  detail
+                    ? this.favorite(detail.movie, !favorite)
+                    : savedFavorite
+                      ? this.favorite(savedFavorite, false)
+                      : this.favoriteTmdb(movie.tmdb_id!)
+                }
+                aria-label={this.t(favorite ? 'removeFavorite' : 'addFavorite')}
+                aria-pressed={favorite}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />
+                </svg>
+              </button>
             </div>
             {this.state.unmarkingWatched && (
               <div className="notice" role="alert">
@@ -3136,7 +3138,7 @@ export class Mainflix extends Component<Props, State> {
                 </span>
               </div>
             )}
-            {detail && this.canManage && (
+            {detail && this.state.user?.is_admin && this.state.tab === 'admin' && (
               <details className="cinema-management">
                 <summary>{this.t('manageMovie')}</summary>
                 <form
@@ -3420,7 +3422,7 @@ export class Mainflix extends Component<Props, State> {
                   'history',
                   'reviews',
                   'about',
-                  ...(this.canManage ? ['admin'] : []),
+                  ...(this.canManage || this.state.user?.is_admin ? ['admin'] : []),
                 ] as Tab[]
               ).map((tab) => (
                 <button
@@ -3468,7 +3470,12 @@ export class Mainflix extends Component<Props, State> {
                 <button onClick={() => this.navigate('profile')}>{this.t('goToProfile')}</button>
                 {this.state.group &&
                   (
-                    ['history', 'reviews', 'about', ...(this.canManage ? ['admin'] : [])] as Tab[]
+                    [
+                      'history',
+                      'reviews',
+                      'about',
+                      ...(this.canManage || this.state.user?.is_admin ? ['admin'] : []),
+                    ] as Tab[]
                   ).map((tab) => (
                     <button
                       className="mobile-menu-link"

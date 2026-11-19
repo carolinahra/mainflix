@@ -36,6 +36,71 @@ class HttpFixture {
   }
 }
 
+test('only the app administrator can maintain movies while group owners can nominate and favorite', async () => {
+  const f = new HttpFixture()
+  await f.container.userService.create(null, 'catalogue_owner', 'Owner', 'abcdef', true)
+  const groupOwner = await f.container.userService.create(
+    null,
+    'catalogue_member',
+    'Member',
+    'abcdef',
+  )
+  await TestDatabase.database.client
+    .updateTable('groups')
+    .set({ owner_id: groupOwner.id })
+    .where('id', '=', 1)
+    .execute()
+  f.container.tmdb = new Tmdb('test', async (input) =>
+    Response.json({
+      id: Number(new URL(String(input)).pathname.split('/').pop()),
+      title: 'Discovered movie',
+    }),
+  )
+  const app = f.container.application.app
+  const owner = await f.login('catalogue_owner', 'abcdef')
+  const member = await f.login('catalogue_member', 'abcdef')
+  for (const body of [{ title: 'Manual title' }, { tmdbId: 42 }]) {
+    await request(app)
+      .post('/api/movies')
+      .set('Cookie', member)
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(403)
+  }
+  const created = await request(app)
+    .post('/api/movies')
+    .set('Cookie', owner)
+    .set('Origin', 'http://localhost:5173')
+    .send({ title: 'Owner movie' })
+    .expect(201)
+  await request(app)
+    .patch(`/api/admin/movies/${created.body.id}`)
+    .set('Cookie', member)
+    .set('Origin', 'http://localhost:5173')
+    .send({ title: 'Unauthorized edit' })
+    .expect(403)
+  await request(app)
+    .patch(`/api/admin/movies/${created.body.id}`)
+    .set('Cookie', owner)
+    .set('Origin', 'http://localhost:5173')
+    .send({ title: 'Administrator edit' })
+    .expect(200)
+  await request(app).get('/api/admin/movies/pending').set('Cookie', member).expect(403)
+  await request(app)
+    .post('/api/movies/favorites')
+    .set('Cookie', member)
+    .set('Origin', 'http://localhost:5173')
+    .send({ tmdbId: 42 })
+    .expect(200)
+  const { week } = await f.container.roundService.current()
+  await request(app)
+    .put(`/api/rounds/${week}/response`)
+    .set('Cookie', member)
+    .set('Origin', 'http://localhost:5173')
+    .send({ tmdbId: 43 })
+    .expect(200)
+})
+
 test('movie descriptions follow the requested language without overwriting the catalogue synopsis', async () => {
   const f = new HttpFixture()
   await f.container.userService.create(null, 'synopsis', 'Viewer', 'abcdef', true)

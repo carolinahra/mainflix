@@ -74,7 +74,7 @@ export class Application {
     next()
   }
   private admin(req: HttpRequest, res: HttpResponse, next: NextFunction): void {
-    if (!res.locals.group?.is_owner) throw new ForbiddenException()
+    if (!Http.user(res).is_admin) throw new ForbiddenException()
     res.locals.container!.adminController.router(req, res, next)
   }
   private notFound(): never {

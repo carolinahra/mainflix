@@ -4,6 +4,7 @@ import type { MovieService } from '../services/movie.service.js'
 import type { ReviewService } from '../services/review.service.js'
 import { Http, type HttpRequest, type HttpResponse } from '../shared/http.js'
 import { movieCategories } from '../models/entities.js'
+import { ForbiddenException } from '../shared/exceptions/index.js'
 export class MovieController {
   readonly router: ExpressRouter = Router()
   constructor(
@@ -49,6 +50,7 @@ export class MovieController {
     res.json(await this.movies.search(q, Http.language(req), limit, offset, Http.user(res).id))
   }
   private async submit(req: HttpRequest, res: HttpResponse): Promise<void> {
+    if (!Http.user(res).is_admin) throw new ForbiddenException()
     const body = z
       .union([
         z.object({ tmdbId: z.number().int().positive().max(2147483647) }).strict(),

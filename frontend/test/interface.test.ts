@@ -6,6 +6,109 @@ import { I18n } from '../src/i18n.js'
 import type { Container } from '../src/container.js'
 import { ApiException } from '../src/api.js'
 
+test('movie discovery exposes nomination and favorites rather than manual imports', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const container = { i18n: new I18n('en') }
+  const app = new Mainflix({ container: container as Container })
+  const movie = {
+    tmdb_id: 42,
+    title: 'Discovered movie',
+    release_year: 2026,
+    overview: 'A story.',
+    poster_path: null,
+  }
+  app.state.group = { id: 1, name: 'Movie night', is_owner: false, can_vote: true }
+  app.state.user = {
+    id: 1,
+    name: 'Viewer',
+    username: 'viewer',
+    email: null,
+    avatar: null,
+    is_admin: false,
+  }
+  app.state.remoteDetail = movie
+  app.state.round = {
+    week: '2026-11-16',
+    status: 'collecting',
+    winner: null,
+    winner_id: null,
+    drawn_by: null,
+    drawn_at: null,
+    ends_at: '2026-11-23T00:00:00Z',
+    responses: [],
+    members: [],
+  }
+  for (const [language, nominate, favorite, imported, missing] of [
+    ['en', 'Nominate', 'Add to favorites', 'Add from TMDB', 'Submit a missing movie'],
+    ['es', 'Nominar', 'Añadir a favoritas', 'Añadir desde TMDB', 'Proponer una película que falta'],
+  ] as const) {
+    container.i18n = new I18n(language)
+    app.state.round.status = 'collecting'
+    for (const node of [app['renderRemoteCard'](movie), app['renderDetail']()]) {
+      const markup = renderToStaticMarkup(node)
+      assert.ok(markup.includes(nominate))
+      assert.ok(markup.includes(favorite))
+      assert.ok(!markup.includes(imported))
+    }
+    app.state.round.status = 'ready'
+    for (const node of [app['renderRemoteCard'](movie), app['renderDetail']()]) {
+      const markup = renderToStaticMarkup(node)
+      assert.ok(!markup.includes(`>${nominate}</button>`))
+      assert.ok(!markup.includes(imported))
+      assert.ok(markup.includes(favorite))
+    }
+    assert.ok(!renderToStaticMarkup(app['renderSearch']()).includes(missing))
+  }
+})
+
+test('only app administrators can manage movies through the administration view', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state.group = { id: 1, name: 'Movie night', is_owner: true, can_vote: true }
+  app.state.user = {
+    id: 1,
+    name: 'Owner',
+    username: 'owner',
+    email: null,
+    avatar: null,
+    is_admin: false,
+  }
+  app.state.detail = {
+    movie: {
+      id: 1,
+      group_id: 1,
+      tmdb_id: null,
+      title: 'Local movie',
+      release_year: 2026,
+      overview: '',
+      poster_path: null,
+      approval_status: 'approved',
+      submitted_by: null,
+      eligible: true,
+      eligibility_changed_by: null,
+      eligibility_changed_at: null,
+      created_at: '2026-11-19T00:00:00Z',
+    },
+    favorite: false,
+    reviewsLocked: false,
+    reviews: [],
+    watched: [],
+  }
+  for (const tab of ['week', 'catalogue', 'reviews', 'profile', 'admin'] as const) {
+    app.state.tab = tab
+    assert.doesNotMatch(
+      renderToStaticMarkup(app['renderDetail']()),
+      /Manage movie|Edit information|name="title"/,
+    )
+  }
+  app.state.tab = 'admin'
+  app.state.group.is_owner = false
+  app.state.user.is_admin = true
+  assert.match(renderToStaticMarkup(app['renderDetail']()), /Manage movie/)
+  app.state.user.is_admin = false
+  assert.doesNotMatch(renderToStaticMarkup(app['renderDetail']()), /Manage movie|name="title"/)
+})
+
 test('cinema details show one editable review and preserve artwork through owner changes', async (context) => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const container = { i18n: new I18n('en') }
