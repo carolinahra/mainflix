@@ -128,17 +128,26 @@ export class MovieRepository {
       .where('tmdb_id', 'in', ids)
       .execute()
   }
-  async create(values: Insertable<Schema['movies']>, db: Connection): Promise<Movie> {
+  async create(
+    values: Insertable<Schema['movies']> & Pick<Movie, 'backdrop_path'>,
+    db: Connection,
+  ): Promise<Movie> {
+    const { backdrop_path, ...stored } = values
     return db
       .insertInto('movies')
-      .values({ ...values, group_id: this.groupId })
+      .values({ ...stored, group_id: this.groupId })
       .returningAll()
       .executeTakeFirstOrThrow()
   }
-  async update(id: number, values: Updateable<Schema['movies']>, db: Connection): Promise<Movie> {
+  async update(
+    id: number,
+    values: Updateable<Schema['movies']> & Pick<Movie, 'backdrop_path'>,
+    db: Connection,
+  ): Promise<Movie> {
+    const { backdrop_path, ...stored } = values
     return db
       .updateTable('movies')
-      .set(values)
+      .set(stored)
       .where('id', '=', id)
       .where('group_id', '=', this.groupId)
       .returningAll()

@@ -27,6 +27,7 @@ export interface Movie {
   release_year: number | null
   overview: string
   poster_path: string | null
+  backdrop_path?: string | null
   approval_status: ApprovalStatus
   submitted_by: number | null
   eligible: boolean
@@ -53,6 +54,7 @@ export interface MovieMetadata {
   release_year: number | null
   overview: string
   poster_path: string | null
+  backdrop_path?: string | null
 }
 export interface WatchProvider {
   provider_id: number

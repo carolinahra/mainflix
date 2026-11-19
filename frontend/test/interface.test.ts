@@ -6,6 +6,88 @@ import { I18n } from '../src/i18n.js'
 import type { Container } from '../src/container.js'
 import { ApiException } from '../src/api.js'
 
+test('cinema details show one editable review and preserve artwork through owner changes', async (context) => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const container = { i18n: new I18n('en') }
+  const app = new Mainflix({ container: container as Container })
+  app.state.detail = {
+    movie: {
+      id: 1,
+      group_id: 1,
+      tmdb_id: 42,
+      title: 'Interstellar',
+      release_year: 2014,
+      overview: 'A journey home.',
+      poster_path: '/poster.jpg',
+      backdrop_path: '/landscape.jpg',
+      approval_status: 'approved',
+      submitted_by: null,
+      eligible: true,
+      eligibility_changed_by: null,
+      eligibility_changed_at: null,
+      created_at: '2026-11-19T00:00:00Z',
+    },
+    favorite: false,
+    reviewsLocked: false,
+    watched: [{ user_id: 1, name: 'Viewer', watched_at: '2026-11-19T00:00:00Z' }],
+    reviews: [
+      {
+        user_id: 1,
+        movie_id: 1,
+        name: 'Viewer',
+        avatar: null,
+        rating: 4.5,
+        text: 'My single saved review.',
+        created_at: '2026-11-19T00:00:00Z',
+        updated_at: '2026-11-19T00:00:00Z',
+      },
+    ],
+  }
+  app.state.user = {
+    id: 1,
+    name: 'Viewer',
+    username: 'viewer',
+    email: null,
+    avatar: null,
+    is_admin: false,
+  }
+  for (const [language, edit, editing] of [
+    ['en', 'Edit review', 'Editing your review'],
+    ['es', 'Editar reseña', 'Editando tu reseña'],
+  ] as const) {
+    container.i18n = new I18n(language)
+    app.state.editingReview = false
+    let markup = renderToStaticMarkup(app['renderDetail']())
+    assert.equal(markup.split('My single saved review.').length - 1, 1)
+    assert.doesNotMatch(markup, /<textarea/)
+    assert.ok(markup.includes(edit))
+    assert.match(markup, /w1280\/landscape.jpg/)
+    app.state.editingReview = true
+    markup = renderToStaticMarkup(app['renderDetail']())
+    assert.equal(markup.split('My single saved review.').length - 1, 1)
+    assert.match(markup, /class="[^"]*own-review[^"]*editing/)
+    assert.ok(markup.includes(editing))
+    assert.match(markup, /<textarea[^>]*>My single saved review\.<\/textarea>/)
+    assert.match(markup, /aria-label="4.5\/5"[^>]*checked/)
+  }
+  const { backdrop_path, ...saved } = app.state.detail!.movie
+  Object.assign(container, { api: { request: async () => ({ ...saved, title: 'Edited title' }) } })
+  let pending!: Promise<void>
+  context.mock.method(app, 'perform', (work: () => Promise<void>) => {
+    pending = work()
+    return pending
+  })
+  context.mock.method(app, 'setState', (update: object | ((state: typeof app.state) => object)) => {
+    app.state = { ...app.state, ...(typeof update === 'function' ? update(app.state) : update) }
+  })
+  context.mock.method(app, 'refreshRound', async () => {})
+  context.mock.method(app, 'search', async () => {})
+  context.mock.method(app, 'loadDiscovery', () => {})
+  app['updateMovie'](1, { title: 'Edited title' })
+  await pending
+  assert.equal(app.state.detail!.movie.backdrop_path, '/landscape.jpg')
+})
+
 test('group management is creator-only and confirms destructive actions', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const container = { i18n: new I18n('en') }

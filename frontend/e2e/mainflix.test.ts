@@ -108,6 +108,110 @@ class BrowserFixture {
 }
 
 for (const engine of [chromium, webkit])
+  test(`Cinema movie details edit one review in place in ${engine.name()}`, { timeout: 120_000 }, async () => {
+    const f = new BrowserFixture()
+    try {
+      await f.prepare(engine)
+      const users = await f.database.client.selectFrom('users').select(['id', 'username'])
+        .where('username', 'in', ['friend1', 'friend2', 'friend3']).orderBy('username').execute()
+      const [viewer, carol, alex] = users
+      assert.ok(viewer && carol && alex)
+      await f.database.client.updateTable('groups').set({ owner_id: viewer.id }).where('id', '=', 1).execute()
+      await f.database.client.updateTable('users').set({ name: 'Carol' }).where('id', '=', carol.id).execute()
+      await f.database.client.updateTable('users').set({ name: 'Alex' }).where('id', '=', alex.id).execute()
+      const synopsis = 'With Earth becoming uninhabitable, a former pilot leaves his family to join a mission beyond our solar system. Across impossible distances, the crew searches for a new home — and a way back to the people they love.'
+      const movie = await f.database.client.insertInto('movies').values({
+        title: 'Interstellar', release_year: 2014, approval_status: 'approved', tmdb_id: 157336,
+        overview: synopsis, poster_path: '/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
+      }).returning('id').executeTakeFirstOrThrow()
+      const original = 'The kind of film that stays with you. That final act gets me every time — definitely one to watch together.'
+      for (const [userId, rating, text] of [
+        [viewer.id, 4.5, original],
+        [carol.id, 5, 'The music, the scale, the feeling. I forgot to breathe during the docking scene.'],
+        [alex.id, 4, 'A great pick for movie night. Already looking forward to the conversation afterwards.'],
+      ] as const) {
+        await f.container.reviewService.markWatched(userId, movie.id)
+        await f.container.reviewService.save(userId, movie.id, rating, text)
+      }
+      const page = await f.page()
+      let backdropPath = '/xJHokMbljvjADYdit5fK5VQsXEG.jpg'
+      await page.route(`**/api/movies/${movie.id}?*`, async route => {
+        const response = await route.fetch()
+        const data = await response.json()
+        await route.fulfill({ response, json: { ...data, movie: { ...data.movie, backdrop_path: backdropPath } } })
+      })
+      await page.route('**/api/movies/providers/157336', route => route.fulfill({ json: {
+        link: 'https://www.themoviedb.org/movie/157336/watch?locale=ES',
+        flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/t2yyOv40HZeVlLjYsCsPHnWLk4W.jpg' }],
+        rent: [{ provider_id: 10, provider_name: 'Amazon Video', logo_path: '/seGSXajazLMCKGB5hnRCidtjay1.jpg' }],
+      } }))
+      await f.login(page, 'friend1')
+      for (const size of [{ width: 1440, height: 1100 }, { width: 375, height: 812 }, { width: 320, height: 568 }]) {
+        await page.setViewportSize(size)
+        await page.locator('#movie-catalogue').getByRole('button', { name: 'Interstellar', exact: true }).click()
+        const dialog = page.getByRole('dialog', { name: 'Interstellar', exact: true })
+        const own = dialog.getByRole('article', { name: 'Your review', exact: true })
+        await own.getByRole('button', { name: 'Edit review', exact: true }).waitFor()
+        assert.equal(await own.locator('.review-copy, .review p').count(), 1)
+        assert.equal(await dialog.getByLabel('Your review (optional)', { exact: true }).count(), 0)
+        const geometry = await dialog.evaluate(element => ({ width: element.getBoundingClientRect().width, overflow: element.scrollWidth > element.clientWidth, hero: element.querySelector('.cinema-hero').getBoundingClientRect().height, titleSize: getComputedStyle(element.querySelector('h2')).fontSize }))
+        assert.equal(geometry.width, size.width > 640 ? 1030 : size.width - 20)
+        assert.equal(geometry.hero, size.width > 640 ? 278 : 230)
+        assert.equal(geometry.titleSize, size.width > 640 ? '48px' : '39px')
+        assert.equal(geometry.overflow, false)
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+        await page.waitForFunction(() => [...document.querySelectorAll('.movie-dialog img')].every(image => image.complete))
+        await dialog.evaluate(element => { element.scrollTop = 0 })
+        await dialog.screenshot({ path: `/tmp/mainflix-cinema-${engine.name()}-${size.width}.png` })
+        await own.getByRole('button', { name: 'Edit review', exact: true }).click()
+        const text = own.getByLabel('Your review (optional)', { exact: true })
+        assert.equal(await text.inputValue(), original)
+        assert.equal(await own.locator('.review p').count(), 0)
+        assert.equal(await own.evaluate(element => getComputedStyle(element).borderTopColor), 'rgb(164, 238, 87)')
+        await text.fill('Discard this draft')
+        await own.getByRole('button', { name: 'Cancel', exact: true }).click()
+        assert.equal(await own.locator('.review p').textContent(), original)
+        await own.getByRole('button', { name: 'Edit review', exact: true }).click()
+        await own.getByRole('radio', { name: '3.5/5', exact: true }).check()
+        await text.fill('Saved in the same review card.')
+        const cancelBox = await own.getByRole('button', { name: 'Cancel', exact: true }).boundingBox()
+        const saveBox = await own.getByRole('button', { name: 'Save review', exact: true }).boundingBox()
+        assert.equal(cancelBox?.y, saveBox?.y)
+        await own.screenshot({ path: `/tmp/mainflix-cinema-edit-${engine.name()}-${size.width}.png` })
+        await page.route(`**/api/movies/${movie.id}/review`, route => route.fulfill({ status: 503, json: { code: 'TMDB_UNAVAILABLE', statusCode: 503 } }))
+        await own.getByRole('button', { name: 'Save review', exact: true }).click()
+        await dialog.getByRole('alert').waitFor()
+        assert.equal(await text.inputValue(), 'Saved in the same review card.')
+        await page.unroute(`**/api/movies/${movie.id}/review`)
+        await own.getByRole('button', { name: 'Save review', exact: true }).click()
+        await own.getByText('Saved in the same review card.', { exact: true }).waitFor()
+        assert.equal(await dialog.getByLabel('Your review (optional)', { exact: true }).count(), 0)
+        const persisted = await f.database.client.selectFrom('reviews').select(['rating', 'text']).where('movie_id', '=', movie.id).where('user_id', '=', viewer.id).executeTakeFirstOrThrow()
+        assert.equal(Number(persisted.rating), 3.5)
+        assert.equal(persisted.text, 'Saved in the same review card.')
+        await dialog.getByRole('button', { name: 'Close ×', exact: true }).click()
+        await f.container.reviewService.save(viewer.id, movie.id, 4.5, original)
+      }
+      backdropPath = '/missing-backdrop.jpg'
+      await page.route('**/w1280/missing-backdrop.jpg', route => route.abort())
+      await page.locator('#movie-catalogue').getByRole('button', { name: 'Interstellar', exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: 'Interstellar', exact: true })
+      await page.waitForFunction(() => document.querySelector('.cinema-hero > img')?.getAttribute('src')?.includes('gEU2QniE6E77NI6lCU6MxlNBvIx'))
+      assert.match(await dialog.locator('.cinema-hero > img').getAttribute('src'), /gEU2QniE6E77NI6lCU6MxlNBvIx/)
+      await page.unroute('**/w1280/missing-backdrop.jpg')
+      backdropPath = '/xJHokMbljvjADYdit5fK5VQsXEG.jpg'
+      await dialog.getByRole('button', { name: 'Close ×', exact: true }).click()
+      await page.locator('#movie-catalogue').getByRole('button', { name: 'Interstellar', exact: true }).click()
+      await dialog.getByText('Manage movie', { exact: true }).click()
+      const management = dialog.locator('.cinema-management')
+      await management.getByLabel('Movie title', { exact: true }).fill('Interstellar edited')
+      await management.getByRole('button', { name: 'Save', exact: true }).click()
+      await page.getByRole('dialog', { name: 'Interstellar edited', exact: true }).waitFor()
+      assert.match(await page.locator('.cinema-hero > img').getAttribute('src'), /xJHokMbljvjADYdit5fK5VQsXEG/)
+    } finally { await f.close() }
+  })
+
+for (const engine of [chromium, webkit])
   test(`movie actions stay together in mobile portrait in ${engine.name()}`, { timeout: 60_000 }, async () => {
     const f = new BrowserFixture()
     try {
@@ -220,6 +324,7 @@ for (const engine of [chromium, webkit])
       await page.locator('#movie-catalogue').getByRole('button', { name: 'Toggle film', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await dialog.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await dialog.getByRole('button', { name: '+ Write your review', exact: true }).click()
       await dialog.getByRole('radio', { name: '4/5', exact: true }).check()
       await dialog.getByLabel('Your review (optional)', { exact: true }).fill('My reversible review')
       await dialog.getByRole('button', { name: 'Save review', exact: true }).click()
@@ -317,8 +422,8 @@ test('creators manage groups and availability opens only with movie details on d
       assert.equal(await detail.getByRole('heading', { name: 'Available at', exact: true }).count(), 1)
       assert.equal(providerRequests, 1)
       const size = await detail.getByRole('img', { name: 'Netflix', exact: true }).boundingBox()
-      assert.equal(size?.width, 40)
-      assert.equal(size?.height, 40)
+      assert.equal(size?.width, 28)
+      assert.equal(size?.height, 28)
       await page.screenshot({ path: `/tmp/mainflix-detail-providers-${mobile ? 'iphone-se' : 'desktop'}.png` })
       await detail.getByRole('button', { name: 'Close ×', exact: true }).click()
       const guest = await f.page(mobile)
@@ -541,6 +646,7 @@ test(
         .click()
       const dialog = last.getByRole('dialog')
       await dialog.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await dialog.getByRole('button', { name: '+ Write your review', exact: true }).click()
       await dialog.getByRole('radio', { name: '4.5/5', exact: true }).check()
       await dialog.getByRole('button', { name: 'Save review', exact: true }).click()
       await dialog.locator('.review [aria-label="4.5/5"]').waitFor()
@@ -647,6 +753,7 @@ test(
       await dialog.getByRole('button', { name: 'Add to favorites', exact: true }).click()
       await dialog.getByRole('button', { name: 'Remove from favorites', exact: true }).waitFor()
       await dialog.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await dialog.getByRole('button', { name: '+ Write your review', exact: true }).click()
       await dialog.getByRole('radio', { name: '3.5/5', exact: true }).check()
       await dialog.getByLabel('Your review (optional)', { exact: true }).fill('My profile review')
       await dialog.getByRole('button', { name: 'Save review', exact: true }).click()
@@ -1117,6 +1224,7 @@ test(
       await admin.emulateMedia({ reducedMotion: 'no-preference' })
       await admin.locator('.winner .text-button').click()
       await admin.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await admin.getByRole('button', { name: '+ Write your review', exact: true }).click()
       const picker = admin.locator('.diamond-picker')
       await picker.waitFor()
       assert.equal(await picker.locator('input[type="radio"]').count(), 10)
@@ -1178,6 +1286,8 @@ test(
       await admin.getByRole('button', { name: 'Mainflix', exact: true }).click()
       await admin.locator('.winner .text-button').click()
       await admin.locator('.review').getByText('A great movie night.', { exact: true }).waitFor()
+      assert.equal(await admin.getByRole('radio').count(), 0)
+      await admin.getByRole('button', { name: 'Edit review', exact: true }).click()
       assert.equal(await admin.getByRole('radio', { name: '4.5/5', exact: true }).isChecked(), true)
       await pages[0]!.locator('.winner .text-button').click()
       await pages[0]!
@@ -1186,6 +1296,7 @@ test(
       assert.equal(await pages[0]!.locator('.review').count(), 0)
       await pages[0]!.getByRole('button', { name: "I've watched it", exact: true }).click()
       assert.equal(await pages[0]!.locator('.review').count(), 0)
+      await pages[0]!.getByRole('button', { name: '+ Write your review', exact: true }).click()
       await pages[0]!.getByRole('radio', { name: '3.5/5', exact: true }).check()
       await pages[0]!
         .getByLabel('Your review (optional)', { exact: true })
@@ -1208,6 +1319,7 @@ test(
       assert.equal(await admin.locator('.reviewed-movie').count(), 1)
       assert.equal(await admin.locator('.reviewed-movie .review').count(), 2)
       await admin.getByRole('button', { name: 'Rate movie', exact: true }).click()
+      await admin.getByRole('button', { name: 'Edit review', exact: true }).click()
       await admin.getByRole('radio', { name: '5/5', exact: true }).check()
       await admin.getByRole('button', { name: 'Save review', exact: true }).click()
       await admin.getByRole('dialog').getByRole('img', { name: '5/5', exact: true }).waitFor()
@@ -1327,6 +1439,7 @@ test(
         .click()
       await page.getByRole('dialog').waitFor()
       await page.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await page.getByRole('button', { name: '+ Write your review', exact: true }).click()
       await page.getByRole('radio', { name: '0.5/5', exact: true }).check()
       await page.getByLabel('Your review (optional)', { exact: true }).fill('An iPhone SE review.')
       await page.getByRole('button', { name: 'Save review', exact: true }).click()

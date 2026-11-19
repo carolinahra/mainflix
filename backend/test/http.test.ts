@@ -50,6 +50,7 @@ test('movie descriptions follow the requested language without overwriting the c
     return Response.json({
       id: 157336,
       title: 'Interstellar',
+      backdrop_path: '/landscape.jpg',
       overview:
         url.searchParams.get('language') === 'es-ES'
           ? 'Un equipo de exploradores viaja más allá de nuestra galaxia.'
@@ -69,6 +70,7 @@ test('movie descriptions follow the requested language without overwriting the c
     (await detail('en').expect(200)).body.movie.overview,
     'A team of explorers travels beyond our galaxy.',
   )
+  assert.equal((await detail('en').expect(200)).body.movie.backdrop_path, '/landscape.jpg')
   await detail('fr').expect(400)
   f.container.tmdb = new Tmdb('')
   assert.equal((await detail('es').expect(200)).body.movie.overview, 'Stored synopsis')

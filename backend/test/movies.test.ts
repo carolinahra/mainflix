@@ -21,6 +21,7 @@ class Upstream {
         release_date: '2014-11-05',
         overview: 'Space',
         poster_path: '/poster.jpg',
+        backdrop_path: '/landscape.jpg',
       }),
     )
   }
@@ -134,6 +135,9 @@ test('TMDB imports are immediately nominatable and concurrent duplicates share o
   assert.equal(results[0]!.approval_status, 'approved')
   assert.equal(results[0]!.release_year, 2014)
   assert.equal((await pool.query('SELECT count(*) FROM movies')).rows[0].count, '1')
+  const updated = await movies.update(friends[0]!.id, results[0]!.id, { tmdbId: 157336 })
+  assert.equal(updated.title, 'Interstellar')
+  assert.equal(Object.hasOwn(updated, 'backdrop_path'), false)
 })
 
 test('local search survives TMDB failure and treats SQL punctuation as literal text', async () => {

@@ -101,7 +101,11 @@ export class MovieService {
     if (language && movie.tmdb_id) {
       try {
         const metadata = await this.tmdb.details(movie.tmdb_id, language)
-        return { ...movie, overview: metadata.overview || movie.overview }
+        return {
+          ...movie,
+          overview: metadata.overview || movie.overview,
+          backdrop_path: metadata.backdrop_path,
+        }
       } catch (error: unknown) {
         if (!(error instanceof AppException)) throw error
       }

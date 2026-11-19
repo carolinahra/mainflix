@@ -32,6 +32,8 @@ interface Props {
 interface State {
   leavingGroup: boolean
   unmarkingWatched: boolean
+  editingReview: boolean
+  reviewRating: number | null
   groupMembers: Member[]
   groupAction: { type: 'delete' } | { type: 'kick'; member: Member } | null
   creatingGroup: boolean
@@ -96,6 +98,8 @@ export class Mainflix extends Component<Props, State> {
   override state: State = {
     leavingGroup: false,
     unmarkingWatched: false,
+    editingReview: false,
+    reviewRating: null,
     groupMembers: [],
     groupAction: null,
     creatingGroup: false,
@@ -488,6 +492,8 @@ export class Mainflix extends Component<Props, State> {
       user: null,
       leavingGroup: false,
       unmarkingWatched: false,
+      editingReview: false,
+      reviewRating: null,
       groupMembers: [],
       groupAction: null,
       error: null,
@@ -1604,12 +1610,17 @@ export class Mainflix extends Component<Props, State> {
   }
   private importMovie(tmdbId: number): void {
     void this.perform(async (): Promise<void> => {
-      await this.props.container.api.request(`/movies?language=${this.state.language}`, 'POST', {
-        tmdbId,
-      })
+      const movie = await this.props.container.api.request<Film>(
+        `/movies?language=${this.state.language}`,
+        'POST',
+        {
+          tmdbId,
+        },
+      )
       this.setState({ message: 'submitted' })
       await this.search(this.state.query)
       this.loadDiscovery()
+      if (this.state.remoteDetail?.tmdb_id === tmdbId) this.openMovie(movie.id)
     })
   }
   private openMovie(id: number): void {
@@ -1624,19 +1635,43 @@ export class Mainflix extends Component<Props, State> {
       const detail: Detail = await this.props.container.api.request(
         `/movies/${id}?language=${this.state.language}`,
       )
-      this.setState({ detail, remoteDetail: null }, (): void => {
-        if (!this.dialog.current?.open) this.dialog.current?.showModal()
-      })
+      this.setState(
+        {
+          detail,
+          remoteDetail: null,
+          editingReview: false,
+          reviewRating: null,
+          unmarkingWatched: false,
+        },
+        (): void => {
+          if (!this.dialog.current?.open) this.dialog.current?.showModal()
+        },
+      )
     })
   }
   private openRemoteMovie(movie: MovieMetadata): void {
-    this.setState({ remoteDetail: movie, detail: null, unmarkingWatched: false }, () => {
-      if (!this.dialog.current?.open) this.dialog.current?.showModal()
-    })
+    this.setState(
+      {
+        remoteDetail: movie,
+        detail: null,
+        unmarkingWatched: false,
+        editingReview: false,
+        reviewRating: null,
+      },
+      () => {
+        if (!this.dialog.current?.open) this.dialog.current?.showModal()
+      },
+    )
   }
   private closeDetail(): void {
     this.dialog.current?.close()
-    this.setState({ detail: null, remoteDetail: null, unmarkingWatched: false })
+    this.setState({
+      detail: null,
+      remoteDetail: null,
+      unmarkingWatched: false,
+      editingReview: false,
+      reviewRating: null,
+    })
   }
   private watched(watched: boolean): void {
     const id: number | undefined = this.state.detail?.movie.id
@@ -1653,6 +1688,7 @@ export class Mainflix extends Component<Props, State> {
       this.setState((state) => ({
         detail,
         unmarkingWatched: false,
+        editingReview: false,
         myReviews: watched
           ? state.myReviews
           : state.myReviews.filter((entry) => entry.movie.id !== id),
@@ -1677,6 +1713,7 @@ export class Mainflix extends Component<Props, State> {
       )
       this.setState((state) => ({
         detail,
+        editingReview: false,
         reviewed: state.reviewed.map((entry) =>
           entry.movie.id === id
             ? { ...entry, reviews: detail.reviews, reviewsLocked: detail.reviewsLocked }
@@ -1775,7 +1812,18 @@ export class Mainflix extends Component<Props, State> {
       )
       this.setState((state) => ({
         pending: state.pending.filter((m) => m.id !== id),
-        detail: state.detail ? { ...state.detail, movie } : null,
+        detail: state.detail
+          ? {
+              ...state.detail,
+              movie: {
+                ...movie,
+                backdrop_path:
+                  movie.tmdb_id === state.detail.movie.tmdb_id
+                    ? state.detail.movie.backdrop_path
+                    : undefined,
+              },
+            }
+          : null,
       }))
       await this.refreshRound()
       await this.search(this.state.query)
@@ -2875,12 +2923,13 @@ export class Mainflix extends Component<Props, State> {
       </section>
     )
   }
-  private renderReview(review: Serialized<Review>): ReactNode {
+  private renderReview(review: Serialized<Review>, own: boolean = false): ReactNode {
     return (
       <article className="review" key={review.user_id}>
         <strong className="review-author">
           <img className="review-avatar" src={review.avatar ?? '/art/creeper-avatar.png'} alt="" />
-          {review.name}
+          {own ? this.t('you') : review.name}
+          {own && <small className="cinema-you-badge">{this.t('yourReview')}</small>}
         </strong>
         <span role="img" aria-label={`${review.rating}/5`}>
           {[1, 2, 3, 4, 5].map((n) => (
@@ -2905,30 +2954,40 @@ export class Mainflix extends Component<Props, State> {
     return (
       <section className="watch-providers" aria-label={this.t('availableAt')}>
         <h3>{this.t('availableAt')}</h3>
-        {(['flatrate', 'rent'] as const).map(
-          (kind) =>
-            providers[kind].length > 0 && (
-              <div key={kind}>
-                <small className="muted">
-                  {this.t(kind === 'flatrate' ? 'subscription' : 'rental')}
-                </small>
-                <ul>
-                  {providers[kind].map((provider) => (
-                    <li key={provider.provider_id}>
-                      <img
-                        src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
-                        alt={provider.provider_name}
-                        title={provider.provider_name}
-                        width={40}
-                        height={40}
-                        loading="lazy"
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ),
-        )}
+        <div className="watch-provider-groups">
+          {(['flatrate', 'rent'] as const).map(
+            (kind) =>
+              providers[kind].length > 0 && (
+                <div key={kind}>
+                  <small className="muted">
+                    {this.t(kind === 'flatrate' ? 'subscription' : 'rental')}
+                  </small>
+                  <ul>
+                    {providers[kind].map((provider) => (
+                      <li key={provider.provider_id}>
+                        <a
+                          href={providers.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={provider.provider_name}
+                        >
+                          <img
+                            src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
+                            alt={provider.provider_name}
+                            title={provider.provider_name}
+                            width={28}
+                            height={28}
+                            loading="lazy"
+                          />
+                          <span>{provider.provider_name}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+          )}
+        </div>
         <small>
           <a href={providers.link} target="_blank" rel="noopener noreferrer">
             JustWatch
@@ -2939,178 +2998,355 @@ export class Mainflix extends Component<Props, State> {
   }
   private renderDetail(): ReactNode {
     const detail: Detail | null = this.state.detail
-    if (this.state.remoteDetail) {
-      const movie = this.state.remoteDetail
-      return (
-        <>
-          <button className="close" onClick={this.closeDetail.bind(this)}>
-            {this.t('close')} ×
-          </button>
-          <h2>
-            {movie.title} <small>{movie.release_year}</small>
-          </h2>
-          <p>{movie.overview}</p>
-          {this.renderWatchProviders(movie.tmdb_id)}
-        </>
-      )
-    }
-    if (!detail) return null
-    const { movie, reviews, watched } = detail
+    const movie = detail?.movie ?? this.state.remoteDetail
+    if (!movie) return null
+    const reviews = detail?.reviews ?? []
+    const watched = detail?.watched ?? []
     const mine = reviews.find((r) => r.user_id === this.state.user?.id)
     const seen: boolean = watched.some((w) => w.user_id === this.state.user?.id)
+    const artwork = movie.backdrop_path ?? movie.poster_path
+    const average = reviews.length
+      ? (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(1)
+      : null
     return (
       <>
-        <button className="close" onClick={this.closeDetail.bind(this)}>
-          {this.t('close')} ×
-        </button>
-        <h2>
-          {movie.title} <small>{movie.release_year}</small>
-        </h2>
-        {movie.approval_status !== 'approved' && (
-          <p className="muted">{this.t(movie.approval_status)}</p>
-        )}
-        <p>{movie.overview}</p>
-        {movie.tmdb_id && this.renderWatchProviders(movie.tmdb_id)}
-        <p>
-          {this.t('watchedBy')}: {watched.map((w) => w.name).join(', ') || '—'}
-        </p>
-        {(seen || movie.approval_status === 'approved') && (
-          <button
-            disabled={this.state.busy}
-            onClick={() => {
-              if (seen && mine) this.setState({ unmarkingWatched: true })
-              else this.watched(!seen)
-            }}
-          >
-            {this.t(seen ? 'unmarkWatched' : 'watched')}
-          </button>
-        )}
-        {this.state.unmarkingWatched && (
-          <div className="notice" role="alert">
-            <p>{this.t('unmarkWatchedWarning')}</p>
-            <button disabled={this.state.busy} onClick={() => this.watched(false)}>
-              {this.t('confirmUnmarkWatched')}
-            </button>
-            <button
-              disabled={this.state.busy}
-              onClick={() => this.setState({ unmarkingWatched: false })}
-            >
-              {this.t('cancel')}
-            </button>
-          </div>
-        )}
         <button
-          disabled={this.state.busy}
-          onClick={() => this.favorite(movie, !detail.favorite)}
-          aria-pressed={detail.favorite}
+          className="close-modal"
+          aria-label={`${this.t('close')} ×`}
+          onClick={this.closeDetail.bind(this)}
         >
-          {this.t(detail.favorite ? 'removeFavorite' : 'addFavorite')}
+          ×
         </button>
-        <h3>{this.t('reviews')}</h3>
-        {detail.reviewsLocked ? (
-          <p className="muted">{this.t('reviewToSeeFriends')}</p>
-        ) : reviews.length ? (
-          reviews.map((review) => this.renderReview(review))
-        ) : (
-          <p className="muted">{this.t('noReviews')}</p>
-        )}
-        {seen ? (
-          <form key={`${movie.id}-${mine?.updated_at ?? 'new'}`} onSubmit={this.review.bind(this)}>
-            <fieldset className="diamond-picker" disabled={this.state.busy}>
-              <legend>{this.t('rating')}</legend>
-              {Array.from({ length: 10 }, (_, index) => (index + 1) / 2).map((rating) => (
-                <label key={rating} title={`${rating}/5`}>
-                  <input
-                    type="radio"
-                    name="rating"
-                    value={rating}
-                    aria-label={`${rating}/5`}
-                    defaultChecked={rating === mine?.rating}
-                    required
-                  />
-                  <span className="diamond-half" aria-hidden="true" />
-                </label>
-              ))}
-            </fieldset>
-            <label>
-              {this.t('review')}
-              <textarea name="text" maxLength={10000} defaultValue={mine?.text ?? ''} />
-            </label>
-            <button disabled={this.state.busy}>{this.t('saveReview')}</button>
-          </form>
-        ) : (
-          <p className="muted">{this.t('watchFirst')}</p>
-        )}
-        {this.canManage && (
-          <details>
-            <summary>{this.t('edit')}</summary>
-            <form
-              key={`${movie.id}-${movie.title}`}
-              onSubmit={(event: FormEvent<HTMLFormElement>): void =>
-                this.editMovie(event, movie.id)
-              }
-            >
-              <label>
-                {this.t('title')}
-                <input name="title" required defaultValue={movie.title} maxLength={300} />
-              </label>
-              <label>
-                {this.t('year')}
-                <input
-                  name="year"
-                  type="number"
-                  min={1870}
-                  max={2200}
-                  defaultValue={movie.release_year ?? ''}
-                />
-              </label>
-              <label>
-                {this.t('overview')}
-                <textarea name="overview" defaultValue={movie.overview} maxLength={20000} />
-              </label>
-              <label>
-                {this.t('tmdbId')}
-                <input name="tmdbId" type="number" min={1} />
-              </label>
-              <button disabled={this.state.busy}>{this.t('save')}</button>
-            </form>
-            {movie.approval_status !== 'approved' && (
-              <button
-                disabled={this.state.busy}
-                onClick={(): void => this.updateMovie(movie.id, { approvalStatus: 'approved' })}
-              >
-                {this.t('approve')}
-              </button>
+        <div className="cinema-hero">
+          {artwork && (
+            <img
+              src={`https://image.tmdb.org/t/p/w1280${artwork}`}
+              alt=""
+              onError={(event) => {
+                const poster = movie.poster_path
+                  ? `https://image.tmdb.org/t/p/w1280${movie.poster_path}`
+                  : null
+                if (poster && event.currentTarget.src !== poster) event.currentTarget.src = poster
+                else event.currentTarget.hidden = true
+              }}
+            />
+          )}
+          <div className="cinema-title">
+            <p className="film-eyebrow">{this.t(detail ? 'movieNightEyebrow' : 'discoverMovie')}</p>
+            <h2 id="movie-detail-title">{movie.title}</h2>
+            <div className="film-meta">
+              {movie.release_year && (
+                <>
+                  <span>{movie.release_year}</span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
+              <span className="film-pill">{detail ? this.t('inCatalogue') : 'TMDB'}</span>
+            </div>
+          </div>
+        </div>
+        <div className="cinema-body">
+          <div className="cinema-info">
+            <div className="cinema-actions">
+              {detail && (seen || detail.movie.approval_status === 'approved') && (
+                <button
+                  className="primary"
+                  aria-label={this.t(seen ? 'unmarkWatched' : 'watched')}
+                  aria-pressed={seen}
+                  disabled={this.state.busy}
+                  onClick={() => {
+                    if (seen && mine) this.setState({ unmarkingWatched: true })
+                    else this.watched(!seen)
+                  }}
+                >
+                  {seen && (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      aria-hidden="true"
+                    >
+                      <path d="m5 12 4 4L19 6" />
+                    </svg>
+                  )}
+                  {this.t(seen ? 'watchedStatus' : 'watched')}
+                </button>
+              )}
+              {detail ? (
+                <button
+                  className="cinema-favorite"
+                  disabled={this.state.busy}
+                  onClick={() => this.favorite(detail.movie, !detail.favorite)}
+                  aria-label={this.t(detail.favorite ? 'removeFavorite' : 'addFavorite')}
+                  aria-pressed={detail.favorite}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  className="primary"
+                  disabled={this.state.busy}
+                  onClick={() => this.importMovie(movie.tmdb_id!)}
+                >
+                  + {this.t('import')}
+                </button>
+              )}
+            </div>
+            {this.state.unmarkingWatched && (
+              <div className="notice" role="alert">
+                <p>{this.t('unmarkWatchedWarning')}</p>
+                <button disabled={this.state.busy} onClick={() => this.watched(false)}>
+                  {this.t('confirmUnmarkWatched')}
+                </button>
+                <button
+                  disabled={this.state.busy}
+                  onClick={() => this.setState({ unmarkingWatched: false })}
+                >
+                  {this.t('cancel')}
+                </button>
+              </div>
             )}
-            {movie.approval_status === 'pending' && (
-              <button
-                disabled={this.state.busy}
-                onClick={(): void => this.updateMovie(movie.id, { approvalStatus: 'rejected' })}
-              >
-                {this.t('reject')}
-              </button>
+            {detail && detail.movie.approval_status !== 'approved' && (
+              <p className="muted">{this.t(detail.movie.approval_status)}</p>
             )}
-            <button
-              disabled={this.state.busy}
-              onClick={(): void => this.updateMovie(movie.id, { eligible: !movie.eligible })}
-            >
-              {this.t(movie.eligible ? 'exclude' : 'allow')}
-            </button>
-            {movie.approval_status === 'pending' && (
-              <form
-                onSubmit={(event: FormEvent<HTMLFormElement>): void =>
-                  this.mergeMovie(event, movie.id)
-                }
-              >
-                <label>
-                  {this.t('targetId')}
-                  <input name="targetId" type="number" min={1} required />
-                </label>
-                <button disabled={this.state.busy}>{this.t('merge')}</button>
-              </form>
+            <section>
+              <h3 className="section-label">{this.t('theStory')}</h3>
+              <p className="cinema-synopsis">{movie.overview}</p>
+            </section>
+            {movie.tmdb_id && this.renderWatchProviders(movie.tmdb_id)}
+            {detail && (
+              <div className="cinema-watched-by">
+                <div className="cinema-avatar-stack">
+                  {watched.slice(0, 3).map((viewer) => {
+                    const avatar =
+                      reviews.find((review) => review.user_id === viewer.user_id)?.avatar ??
+                      (viewer.user_id === this.state.user?.id ? this.state.user.avatar : null)
+                    return (
+                      <span className="cinema-avatar" key={viewer.user_id}>
+                        {avatar ? <img src={avatar} alt="" /> : viewer.name.slice(0, 1)}
+                      </span>
+                    )
+                  })}
+                </div>
+                <span>
+                  {this.t('watchedBy')}: {watched.map((viewer) => viewer.name).join(', ') || '—'}
+                </span>
+              </div>
             )}
-          </details>
-        )}
+            {detail && this.canManage && (
+              <details className="cinema-management">
+                <summary>{this.t('manageMovie')}</summary>
+                <form
+                  key={`${detail.movie.id}-${movie.title}`}
+                  onSubmit={(event: FormEvent<HTMLFormElement>): void =>
+                    this.editMovie(event, detail.movie.id)
+                  }
+                >
+                  <label>
+                    {this.t('title')}
+                    <input name="title" required defaultValue={movie.title} maxLength={300} />
+                  </label>
+                  <label>
+                    {this.t('year')}
+                    <input
+                      name="year"
+                      type="number"
+                      min={1870}
+                      max={2200}
+                      defaultValue={movie.release_year ?? ''}
+                    />
+                  </label>
+                  <label>
+                    {this.t('overview')}
+                    <textarea name="overview" defaultValue={movie.overview} maxLength={20000} />
+                  </label>
+                  <label>
+                    {this.t('tmdbId')}
+                    <input name="tmdbId" type="number" min={1} />
+                  </label>
+                  <button disabled={this.state.busy}>{this.t('save')}</button>
+                </form>
+                {detail.movie.approval_status !== 'approved' && (
+                  <button
+                    disabled={this.state.busy}
+                    onClick={() =>
+                      this.updateMovie(detail.movie.id, { approvalStatus: 'approved' })
+                    }
+                  >
+                    {this.t('approve')}
+                  </button>
+                )}
+                {detail.movie.approval_status === 'pending' && (
+                  <button
+                    disabled={this.state.busy}
+                    onClick={() =>
+                      this.updateMovie(detail.movie.id, { approvalStatus: 'rejected' })
+                    }
+                  >
+                    {this.t('reject')}
+                  </button>
+                )}
+                <button
+                  disabled={this.state.busy}
+                  onClick={() =>
+                    this.updateMovie(detail.movie.id, { eligible: !detail.movie.eligible })
+                  }
+                >
+                  {this.t(detail.movie.eligible ? 'exclude' : 'allow')}
+                </button>
+                {detail.movie.approval_status === 'pending' && (
+                  <form onSubmit={(event) => this.mergeMovie(event, detail.movie.id)}>
+                    <label>
+                      {this.t('targetId')}
+                      <input name="targetId" type="number" min={1} required />
+                    </label>
+                    <button disabled={this.state.busy}>{this.t('merge')}</button>
+                  </form>
+                )}
+              </details>
+            )}
+          </div>
+          <div className="cinema-reviews">
+            {detail ? (
+              <section aria-label={this.t('reviews')}>
+                <div className="cinema-reviews-heading">
+                  <h3>
+                    {this.t('ourReviews')}
+                    {!detail.reviewsLocked && <small>{reviews.length}</small>}
+                  </h3>
+                  {!detail.reviewsLocked && average && (
+                    <span className="cinema-rating-summary">
+                      <img src="/art/diamond.png" alt="" />
+                      {average}
+                      <small>/ 5</small>
+                    </span>
+                  )}
+                </div>
+                {seen && this.state.editingReview ? (
+                  <article className="own-review editing" aria-label={this.t('yourReview')}>
+                    <p className="editing-label">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        aria-hidden="true"
+                      >
+                        <path d="m16 3 5 5-12 12-6 1 1-6Z" />
+                        <path d="m14 5 5 5" />
+                      </svg>
+                      {this.t('editingReview')}
+                    </p>
+                    <form
+                      key={`${detail.movie.id}-${mine?.updated_at ?? 'new'}`}
+                      onSubmit={this.review.bind(this)}
+                    >
+                      <fieldset className="diamond-picker" disabled={this.state.busy}>
+                        <legend>{this.t('yourRating')}</legend>
+                        {Array.from({ length: 10 }, (_, index) => (index + 1) / 2).map((rating) => (
+                          <label key={rating} title={`${rating}/5`}>
+                            <input
+                              type="radio"
+                              name="rating"
+                              value={rating}
+                              aria-label={`${rating}/5`}
+                              defaultChecked={rating === mine?.rating}
+                              onChange={() => this.setState({ reviewRating: rating })}
+                              required
+                            />
+                            <span className="diamond-half" aria-hidden="true" />
+                          </label>
+                        ))}
+                      </fieldset>
+                      <label>
+                        {this.t('review')}
+                        <textarea
+                          name="text"
+                          aria-label={this.t('review')}
+                          maxLength={10000}
+                          defaultValue={mine?.text ?? ''}
+                          autoFocus={this.state.editingReview}
+                        />
+                      </label>
+                      <div className="cinema-editor-footer">
+                        <span className="cinema-rating-value">
+                          {(this.state.reviewRating ?? mine?.rating)
+                            ? `${this.state.reviewRating ?? mine?.rating} / 5 ${this.t('diamonds')}`
+                            : this.t('chooseRating')}
+                        </span>
+                        <div className="cinema-editor-actions">
+                          <button
+                            type="button"
+                            disabled={this.state.busy}
+                            onClick={() =>
+                              this.setState({ editingReview: false, reviewRating: null })
+                            }
+                          >
+                            {this.t('cancel')}
+                          </button>
+                          <button className="primary" disabled={this.state.busy}>
+                            {this.t('saveReview')}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  </article>
+                ) : mine ? (
+                  <article className="own-review" aria-label={this.t('yourReview')}>
+                    {this.renderReview(mine, true)}
+                    <button
+                      className="edit-review"
+                      disabled={this.state.busy}
+                      onClick={() => this.setState({ editingReview: true, reviewRating: null })}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        aria-hidden="true"
+                      >
+                        <path d="m16 3 5 5-12 12-6 1 1-6Z" />
+                        <path d="m14 5 5 5" />
+                      </svg>
+                      {this.t('editReview')}
+                    </button>
+                  </article>
+                ) : seen ? (
+                  <button
+                    className="cinema-new-review"
+                    disabled={this.state.busy}
+                    onClick={() => this.setState({ editingReview: true, reviewRating: null })}
+                  >
+                    + {this.t('writeReview')}
+                  </button>
+                ) : (
+                  <p className="muted cinema-watch-first">{this.t('watchFirst')}</p>
+                )}
+                {detail.reviewsLocked ? (
+                  <div className="cinema-locked-reviews">
+                    <p>{this.t('reviewToSeeFriends')}</p>
+                  </div>
+                ) : (
+                  reviews
+                    .filter((review) => review.user_id !== mine?.user_id)
+                    .map((review) => this.renderReview(review))
+                )}
+                {!detail.reviewsLocked && !reviews.length && (
+                  <p className="muted">{this.t('noReviews')}</p>
+                )}
+              </section>
+            ) : (
+              <section className="cinema-locked-reviews">
+                <h3>{this.t('remoteReviewTitle')}</h3>
+                <p>{this.t('remoteReviewHint')}</p>
+              </section>
+            )}
+          </div>
+        </div>
       </>
     )
   }
@@ -3388,7 +3624,12 @@ export class Mainflix extends Component<Props, State> {
           </a>
           <small>{this.t('tmdbCredit')}</small>
         </footer>
-        <dialog ref={this.dialog} onCancel={this.closeDetail.bind(this)}>
+        <dialog
+          className="movie-dialog"
+          aria-labelledby="movie-detail-title"
+          ref={this.dialog}
+          onCancel={this.closeDetail.bind(this)}
+        >
           {(this.state.detail || this.state.remoteDetail) && this.renderErrorToast()}
           {this.renderDetail()}
         </dialog>

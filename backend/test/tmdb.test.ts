@@ -4,6 +4,17 @@ import { Tmdb } from '../src/services/tmdb.js'
 
 const movie = { id: 1, title: 'A movie', release_date: '2026-11-06', poster_path: null }
 
+test('movie metadata carries validated landscape artwork for cinematic dialogs', async () => {
+  const tmdb = new Tmdb('test', async () =>
+    Response.json({ ...movie, backdrop_path: '/landscape.jpg' }),
+  )
+  assert.equal((await tmdb.details(1)).backdrop_path, '/landscape.jpg')
+  for (const backdrop_path of ['//other.test/image.jpg', '/../../secret', 'javascript:alert(1)']) {
+    const unsafe = new Tmdb('test', async () => Response.json({ ...movie, backdrop_path }))
+    await assert.rejects(unsafe.details(1), { code: 'TMDB_UNAVAILABLE' })
+  }
+})
+
 test('Christmas browsing uses the Christmas keyword with Spanish releases and pagination', async () => {
   const tmdb = new Tmdb('test', async (input) => {
     const url = new URL(String(input))

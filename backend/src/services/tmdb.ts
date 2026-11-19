@@ -17,6 +17,11 @@ export class Tmdb {
       .regex(/^\/[A-Za-z0-9._-]+$/)
       .nullable()
       .optional(),
+    backdrop_path: z
+      .string()
+      .regex(/^\/[A-Za-z0-9._-]+$/)
+      .nullable()
+      .optional(),
   })
   constructor(
     private readonly token: string,
@@ -48,6 +53,7 @@ export class Tmdb {
       release_year: Number.isInteger(year) && year >= 1870 && year <= 2200 ? year : null,
       overview: row.overview ?? '',
       poster_path: row.poster_path ?? null,
+      ...(row.backdrop_path === undefined ? {} : { backdrop_path: row.backdrop_path }),
     }
   }
   async search(query: string, language: Language): Promise<MovieMetadata[]> {

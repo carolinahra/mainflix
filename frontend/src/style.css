@@ -1375,6 +1375,566 @@ dialog small {
 .password-settings {
   margin-top: 3rem;
 }
+/* Movie details follow the Cinema design; keep other dialogs independent. */
+.movie-dialog {
+  width: min(1030px, calc(100% - 48px));
+  max-width: none;
+  max-height: calc(100dvh - 80px);
+  padding: 0;
+  border: 1px solid #ffffff20;
+  border-radius: 20px;
+  background: #17191d;
+  box-shadow: 0 30px 120px #000a;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #454a40 #17191d;
+}
+.movie-dialog::backdrop {
+  background: #07090bc9;
+  backdrop-filter: blur(7px);
+}
+.movie-dialog .close-modal {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid #ffffff20;
+  border-radius: 50%;
+  background: #111519c9;
+  backdrop-filter: blur(12px);
+  font-size: 26px;
+  line-height: 1;
+}
+.cinema-hero {
+  position: relative;
+  min-height: 278px;
+  padding: 50px 40px 30px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  background: #1f2b35;
+}
+.cinema-hero > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 43%;
+}
+.cinema-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, #11171ce6 3%, #11171c35 75%),
+    linear-gradient(0deg, #17191d 0%, #17191d08 90%);
+}
+.cinema-title {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.movie-dialog h2 {
+  clear: none;
+  padding: 0;
+  margin: 0;
+  font-size: 48px;
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+.movie-dialog h3 {
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  margin: 0 0 14px;
+}
+.movie-dialog p {
+  line-height: 1.7;
+}
+.film-eyebrow {
+  color: #b9ed8c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+.film-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #c4c6cb;
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+.film-pill {
+  background: #ffffff09;
+  border: 1px solid #ffffff20;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.cinema-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  padding: 4px 0 0;
+}
+.cinema-info {
+  min-width: 0;
+  padding: 0 34px 32px 40px;
+}
+.cinema-reviews {
+  min-width: 0;
+  padding: 8px 34px 28px;
+  border-left: 1px solid #ffffff14;
+}
+.cinema-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 8px 0 28px;
+}
+.cinema-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 10px 16px;
+}
+.movie-dialog .primary {
+  background: #a4ee57;
+  box-shadow: none;
+}
+.movie-dialog .primary:hover:not(:disabled) {
+  background: #bbff7c;
+}
+.cinema-actions svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+.cinema-actions .cinema-favorite {
+  width: 46px;
+  padding: 10px;
+}
+.cinema-favorite svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+.cinema-favorite[aria-pressed='true'] {
+  color: #baf58b;
+  border-color: #a4ee5750;
+  background: #26311f;
+}
+.cinema-favorite[aria-pressed='true'] svg {
+  fill: currentColor;
+}
+.movie-dialog h3.section-label,
+.movie-dialog .watch-providers h3 {
+  color: #a8abb1;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin: 0 0 12px;
+}
+.cinema-synopsis {
+  color: #c4c7cc;
+  font-size: 15px;
+  margin: 0;
+  max-width: 66ch;
+  white-space: pre-wrap;
+}
+.movie-dialog .watch-providers {
+  border-top: 1px solid #ffffff14;
+  padding-top: 23px;
+  margin: 26px 0 0;
+}
+.watch-provider-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+}
+.movie-dialog .watch-provider-groups > div > small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 9px;
+}
+.movie-dialog .watch-providers ul {
+  gap: 8px;
+  margin: 0;
+}
+.movie-dialog .watch-providers li a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px 7px 7px;
+  background: #22252b;
+  border: 1px solid #ffffff0e;
+  border-radius: 9px;
+  font-size: 13px;
+  color: #e6e7e8;
+  text-decoration: none;
+}
+.movie-dialog .watch-providers li a:hover {
+  background: #30343a;
+}
+.movie-dialog .watch-providers img {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+}
+.movie-dialog .watch-providers > small {
+  display: block;
+  margin-top: 13px;
+  font-size: 11px;
+}
+.movie-dialog .watch-providers > small a {
+  color: #8c929d;
+  text-decoration: none;
+}
+.movie-dialog .watch-providers > small a:hover {
+  color: white;
+  text-decoration: underline;
+}
+.cinema-watched-by {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 22px;
+  margin-top: 24px;
+  border-top: 1px solid #ffffff14;
+  color: #a8abb1;
+  font-size: 13px;
+}
+.cinema-avatar-stack {
+  display: flex;
+  flex-shrink: 0;
+  padding-left: 5px;
+}
+.cinema-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  border-radius: 50%;
+  border: 2px solid #17191d;
+  margin-left: -5px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #3e4d35;
+  color: #d5efc6;
+  overflow: hidden;
+}
+.cinema-avatar:nth-child(even) {
+  background: #433753;
+  color: #dfd0ef;
+}
+.cinema-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cinema-reviews-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.cinema-reviews-heading h3 {
+  margin: 0;
+}
+.cinema-reviews-heading h3 small {
+  font-size: 13px;
+  font-weight: 400;
+  margin-left: 7px;
+}
+.cinema-rating-summary {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 600;
+}
+.cinema-rating-summary img {
+  width: 21px;
+  height: 21px;
+  image-rendering: pixelated;
+}
+.cinema-rating-summary small {
+  font-size: 11px;
+  font-weight: 400;
+}
+.cinema-reviews .review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 18px 0;
+  border-top: 1px solid #ffffff14;
+  border-bottom: 0;
+  margin: 0;
+}
+.cinema-reviews .review-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e6e7e9;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.cinema-reviews .review-avatar {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+}
+.cinema-reviews .review > span {
+  float: none;
+  display: flex;
+  gap: 1px;
+}
+.cinema-reviews .rating-diamond {
+  width: 18px;
+  height: 18px;
+}
+.cinema-reviews .review p {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: #bec2c9;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.own-review {
+  border: 1px solid #a4ee5726;
+  background: #a4ee5705;
+  border-radius: 12px;
+  padding: 17px;
+  margin-bottom: 8px;
+}
+.cinema-reviews .own-review .review {
+  border: 0;
+  padding: 0;
+}
+.movie-dialog .cinema-you-badge {
+  color: #b9eb91;
+  font-size: 10px;
+  background: #a4ee5712;
+  border: 1px solid #a4ee5720;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-weight: 500;
+}
+.movie-dialog .edit-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 4px 0 0;
+  margin-top: 8px;
+  min-height: 36px;
+  color: #bce693;
+  background: none;
+  font-size: 12px;
+}
+.movie-dialog .edit-review:hover:not(:disabled) {
+  background: transparent;
+  color: #d8ffb7;
+}
+.edit-review svg {
+  width: 13px;
+  height: 13px;
+}
+.own-review.editing {
+  border-color: #a4ee57;
+  box-shadow: 0 0 0 3px #a4ee570a;
+  background: #1b2418;
+}
+.movie-dialog .editing-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #c0f28f;
+  margin: 0 0 15px;
+}
+.editing-label svg {
+  width: 13px;
+  height: 13px;
+}
+.own-review form {
+  margin: 0;
+}
+.own-review .diamond-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0 0 9px;
+  gap: 0;
+}
+.own-review .diamond-picker legend {
+  font-size: 12px;
+  margin-bottom: 5px;
+  color: #c4d3bb;
+}
+.own-review .diamond-picker label {
+  width: 17px;
+  height: 40px;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.own-review .diamond-half {
+  background-size: 34px 34px;
+}
+.own-review label:has(textarea) {
+  font-size: 12px;
+  color: #c4d3bb;
+}
+.own-review textarea {
+  display: block;
+  width: 100%;
+  min-height: 105px;
+  resize: vertical;
+  margin: 8px 0 0;
+  padding: 12px;
+  background: #121910;
+  border: 1px solid #a4ee5770;
+  border-radius: 8px;
+  color: #f1f5ee;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.own-review textarea:focus-visible {
+  outline: 2px solid #a4ee57;
+  outline-offset: 2px;
+}
+.cinema-editor-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  margin-top: 12px;
+}
+.cinema-editor-actions {
+  display: flex;
+  gap: 6px;
+}
+.cinema-rating-value {
+  color: #bdd3ad;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.movie-dialog .cinema-new-review {
+  width: 100%;
+  margin-bottom: 18px;
+  background: #232d1e;
+  border: 1px dashed #a4ee5755;
+  color: #c3ed9f;
+  font-size: 14px;
+}
+.cinema-editor-actions button {
+  min-height: 38px;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.cinema-locked-reviews {
+  text-align: center;
+  padding: 24px 14px;
+  border: 1px dashed #ffffff1f;
+  border-radius: 12px;
+}
+.cinema-locked-reviews p,
+.cinema-watch-first {
+  color: var(--muted);
+  font-size: 14px;
+}
+.cinema-management {
+  border-top: 1px solid #ffffff14;
+  margin-top: 22px;
+  padding-top: 12px;
+}
+.cinema-management summary {
+  font-size: 12px;
+  color: #8f959e;
+}
+.cinema-management button {
+  margin-top: 8px;
+}
+@media (max-width: 900px) {
+  .cinema-info {
+    padding-left: 25px;
+    padding-right: 25px;
+  }
+  .cinema-reviews {
+    padding-left: 25px;
+    padding-right: 25px;
+  }
+  .cinema-hero {
+    padding-left: 25px;
+  }
+}
+@media (max-width: 640px) {
+  .movie-dialog {
+    width: calc(100% - 20px);
+    max-height: calc(100dvh - 32px);
+    border-radius: 15px;
+  }
+  .movie-dialog .close-modal {
+    width: 38px;
+    min-height: 38px;
+    height: 38px;
+    top: 12px;
+    right: 12px;
+  }
+  .cinema-hero {
+    min-height: 230px;
+    padding: 62px 22px 24px;
+  }
+  .cinema-hero > img {
+    object-position: 58% center;
+  }
+  .movie-dialog h2 {
+    font-size: 39px;
+  }
+  .cinema-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cinema-info {
+    padding: 0 22px 23px;
+  }
+  .cinema-actions {
+    margin: 5px 0 24px;
+  }
+  .cinema-reviews {
+    border-left: 0;
+    border-top: 1px solid #ffffff14;
+    padding: 24px 22px 10px;
+  }
+  .film-eyebrow {
+    font-size: 11px;
+  }
+  .cinema-reviews .review-author {
+    font-size: 12px;
+  }
+  .cinema-reviews .rating-diamond {
+    width: 17px;
+    height: 17px;
+  }
+}
 .roulette {
   overflow: hidden;
   border: 3px solid #39304e;
