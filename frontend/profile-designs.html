@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mainflix · Profile design options</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <style>
+      :root { --line: #ffffff13; --soft: #c3c6cc; }
+      body { min-width: 320px; }
+      [hidden] { display: none !important; }
+      .preview-bar { padding: 14px 3vw; display: flex; align-items: center; flex-wrap: wrap; gap: 16px; background: #191c20; border-bottom: 1px solid var(--line); }
+      .preview-copy { margin-right: auto; }
+      .preview-copy strong { font-size: 14px; }
+      .preview-copy p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+      .design-switch { display: flex; gap: 4px; padding: 4px; background: #0f1113; border: 1px solid var(--line); border-radius: 12px; }
+      .design-switch button { background: none; border: 0; color: var(--muted); padding: 9px 16px; font-size: 13px; }
+      .design-switch button[aria-selected="true"] { background: #293721; color: #c5f6a0; }
+      .app-header { position: static; min-height: 80px; padding: 12px 4vw; gap: 35px; }
+      .app-header .brand { font-size: 25px; }
+      .app-header .brand img { width: 48px; height: 45px; }
+      .app-links { display: flex; gap: 26px; color: #b8bbc1; font-size: 14px; flex: 1; }
+      .app-header select { width: 95px; margin: 0; background: #191b1f; }
+      .mini-avatar { width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--green); padding: 3px; object-fit: cover; }
+      .design-context { max-width: 1220px; padding: 25px 28px 0; margin: auto; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 16px; }
+      .design-context span:first-child { color: #d0d2d6; }
+      .design-context b { color: var(--green); font-weight: 500; }
+      .profile-stage { max-width: 1220px; padding: 23px 28px 65px; margin: auto; min-height: 75vh; }
+      .identity { display: flex; gap: 23px; align-items: center; }
+      .identity-copy { min-width: 0; overflow-wrap: anywhere; }
+      .portrait { width: 104px; height: 104px; object-fit: cover; background: #24331f; border: 5px solid #171a1b; border-radius: 50%; box-shadow: 0 0 0 1px #ffffff20; }
+      .eyebrow { margin: 0 0 10px; font-size: 11px; color: #c2ed9f; text-transform: uppercase; font-weight: 600; letter-spacing: .14em; }
+      .identity h1 { margin: 0; font-size: clamp(32px,4vw,46px); letter-spacing: -.045em; }
+      .handle { color: var(--muted); margin: 8px 0 0; font-size: 14px; }
+      .private-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+      svg.icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 18px; }
+      .button-icon { display: inline-flex; justify-content: center; align-items: center; gap: 8px; font-size: 13px; background: #ffffff08; border-color: #ffffff25; }
+      .profile-hero { position: relative; isolation: isolate; padding: 64px 35px 29px; overflow: hidden; border-radius: 18px; background: #1d2722; }
+      .profile-hero::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(0deg,#151a19 4%,#151a19c9 45%,#151a1950), url('/art/movie-night-hero.webp') center 47% / cover; }
+      .profile-hero .identity { align-items: flex-end; }
+      .profile-hero .portrait { width: 112px; height: 112px; }
+      .profile-hero .identity-copy { flex: 1; }
+      .profile-hero .handle { color: #c3c8c5; }
+      .profile-hero .private-note { margin-top: 18px; color: #bcc6bd; }
+      .profile-hero .button-icon { background: #151a18a8; backdrop-filter: blur(10px); }
+      .section-nav { display: flex; gap: 27px; border-bottom: 1px solid var(--line); margin: 9px 0 30px; }
+      .section-nav button { border: 0; background: none; border-radius: 0; padding: 21px 0 17px; color: var(--muted); font-size: 14px; position: relative; white-space: nowrap; }
+      .section-nav button[aria-selected="true"] { color: #e5f4d8; }
+      .section-nav button[aria-selected="true"]::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--green); }
+      .section-title { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 0 0 20px; }
+      .section-title h2 { font-size: 21px; margin: 0; letter-spacing: -.035em; }
+      .section-title p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+      .text-link { border: 0; background: none; color: #bae58e; padding: 6px 0; min-height: 44px; font-size: 13px; white-space: nowrap; }
+      .text-link:hover:not(:disabled) { background: none; color: #d5ffad; }
+      .favorites-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 19px; }
+      .film { min-width: 0; }
+      .poster-wrap { position: relative; overflow: hidden; border-radius: 11px; background: #252b2c; aspect-ratio: 2 / 2.75; }
+      .poster-wrap > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .poster-wrap::after { content: ''; pointer-events: none; position: absolute; inset: 55% 0 0; background: linear-gradient(transparent,#080b0db0); }
+      .heart { position: absolute; z-index: 1; right: 10px; top: 10px; width: 36px; min-height: 36px; padding: 8px; display: grid; place-items: center; background: #111712cb; border: 1px solid #ffffff30; color: #bbf292; border-radius: 50%; backdrop-filter: blur(10px); }
+      .heart svg { fill: currentColor; width: 16px; height: 16px; }
+      .film h3 { margin: 12px 0 5px; font-size: 14px; letter-spacing: -.015em; }
+      .film p { margin: 0; color: var(--muted); font-size: 12px; }
+      .review-section { margin-top: 36px; }
+      .review-list { display: grid; gap: 0; }
+      .review-row { display: grid; grid-template-columns: 61px minmax(0,1fr) auto; align-items: start; gap: 17px; padding: 20px 0; border-top: 1px solid var(--line); }
+      .review-poster { width: 61px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; background: #252b2c; }
+      .review-row h3 { margin: 2px 0 7px; font-size: 15px; }
+      .review-meta { color: var(--muted); font-size: 11px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+      .review-row p { margin: 11px 0 0; color: #c7c9ce; line-height: 1.65; font-size: 13px; max-width: 70ch; }
+      .diamonds { display: inline-flex; align-items: center; gap: 3px; }
+      .diamonds img { width: 15px; height: 15px; image-rendering: pixelated; }
+      .diamonds span { color: #d5e3cd; margin-left: 4px; font-size: 11px; }
+      .review-row > .text-link { color: #b2b7be; font-size: 12px; }
+      .side-layout { display: grid; grid-template-columns: 235px minmax(0,1fr); gap: 53px; }
+      .profile-sidebar { border-right: 1px solid var(--line); padding: 7px 28px 0 0; }
+      .profile-sidebar .identity { display: block; }
+      .profile-sidebar .portrait { width: 86px; height: 86px; margin-bottom: 20px; }
+      .profile-sidebar h1 { font-size: 28px; }
+      .profile-sidebar .private-note { margin-top: 21px; font-size: 11px; }
+      .sidebar-nav { display: grid; gap: 6px; margin-top: 30px; }
+      .sidebar-nav button { display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-align: left; border: 0; background: none; color: var(--muted); font-size: 13px; }
+      .sidebar-nav button[aria-selected="true"] { color: #c6efaa; background: #a4ee5710; }
+      .sidebar-bottom { margin-top: 31px; padding-top: 20px; border-top: 1px solid var(--line); color: #9ba19f; font-size: 12px; line-height: 1.8; }
+      .journal-content { min-width: 0; }
+      .journal-content > .eyebrow { color: #a2ab9c; margin-top: 9px; }
+      .journal-heading { font-size: clamp(28px,3vw,38px); line-height: 1.2; margin: 0 0 10px; letter-spacing: -.045em; }
+      .journal-intro { color: var(--muted); font-size: 14px; margin: 0 0 30px; }
+      .journal-content .review-section { margin-top: 0; }
+      .journal-content .review-row { grid-template-columns: 76px minmax(0,1fr) auto; padding: 24px 0; }
+      .journal-content .review-poster { width: 76px; }
+      .journal-content .review-row h3 { font-size: 18px; margin-top: 4px; }
+      .journal-content .review-row p { font-size: 14px; }
+      .journal-content .review-row:first-child { border-top: 0; padding-top: 4px; }
+      .journal-favorites { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 27px; }
+      .journal-favorites .poster-wrap { aspect-ratio: 2 / 2.65; }
+      .journal-content .favorites-grid { gap: 15px; }
+      .account-layout { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr); gap: 32px; }
+      .account-panel { padding: 25px; background: #191c20; border: 1px solid var(--line); border-radius: 13px; min-width: 0; }
+      .account-panel h2 { font-size: 20px; margin: 0 0 8px; }
+      .account-panel > p { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 0 0 23px; }
+      .account-panel form { display: grid; gap: 18px; }
+      .account-panel label { display: grid; gap: 8px; font-size: 13px; margin: 0; }
+      .account-panel input { margin: 0; width: 100%; min-width: 0; background: #111417; border-color: #ffffff23; }
+      .account-panel small { font-size: 11px; color: var(--muted); line-height: 1.7; }
+      .account-panel .primary { justify-self: start; font-size: 13px; padding-inline: 22px; }
+      .photo-settings { display: flex; align-items: center; gap: 17px; padding-bottom: 23px; margin-bottom: 23px; border-bottom: 1px solid var(--line); }
+      .photo-settings img { width: 65px; height: 65px; object-fit: cover; border-radius: 50%; }
+      .photo-settings label { gap: 6px; font-size: 12px; }
+      .photo-settings input { font-size: 11px; padding: 6px; }
+      .photo-settings .text-link { text-align: left; font-size: 11px; padding: 0; min-height: 28px; }
+      .photo-settings small { display: block; margin-top: 3px; }
+      .journal-content .account-layout { grid-template-columns: minmax(0,1fr); }
+      .preview-footer { text-align: center; color: #8f959d; font-size: 12px; border-top: 1px solid var(--line); padding: 24px; }
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 5; background: #273720; color: #d7f6be; border: 1px solid #a4ee5740; padding: 14px 20px; border-radius: 10px; max-width: calc(100% - 32px); font-size: 13px; box-shadow: 0 10px 50px #0007; }
+      @media (min-width: 1400px) { .profile-stage { padding-top: 30px; } .profile-hero { padding-top: 90px; } }
+      @media (max-width: 950px) { .app-links { gap: 17px; } .app-links span:nth-last-child(-n+2) { display: none; } .side-layout { gap: 28px; grid-template-columns: 195px minmax(0,1fr); } .profile-sidebar { padding-right: 20px; } }
+      @media (max-width: 650px) {
+        .preview-bar { padding: 12px 16px; gap: 12px; } .preview-copy { width: 100%; } .preview-copy p { display: none; } .design-switch { width: 100%; } .design-switch button { flex: 1; font-size: 12px; padding: 8px; }
+        .app-header { min-height: 68px; gap: 14px; padding: 10px 18px; } .app-header .brand { font-size: 21px; margin-right: auto; } .app-header .brand img { width: 38px; height: 36px; } .app-header select { width: 80px; font-size: 11px; min-height: 38px; padding: 8px; } .app-links { display: none; } .mini-avatar { width: 33px; height: 33px; }
+        .design-context { padding: 19px 18px 0; font-size: 11px; } .design-context span:last-child { display: none; } .profile-stage { padding: 18px 18px 35px; }
+        .profile-hero { padding: 49px 22px 23px; border-radius: 14px; } .profile-hero::before { background-position: 64% center; } .profile-hero .identity { flex-wrap: wrap; gap: 16px; } .profile-hero .portrait { width: 78px; height: 78px; border-width: 3px; } .identity h1 { font-size: 30px; } .identity .eyebrow { font-size: 10px; margin-bottom: 7px; } .profile-hero .button-icon { margin: 3px 0 0; min-height: 39px; padding: 8px 12px; font-size: 12px; } .profile-hero .private-note { margin-top: 8px; font-size: 11px; }
+        .section-nav { gap: 22px; margin-bottom: 25px; overflow-x: auto; } .section-nav button { font-size: 12px; padding: 18px 0 14px; } .section-title { gap: 8px; margin-bottom: 15px; } .section-title h2 { font-size: 19px; } .section-title p { font-size: 12px; } .text-link { font-size: 12px; }
+        .favorites-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 19px 14px; } .film h3 { font-size: 13px; } .film p { font-size: 11px; } .poster-wrap { border-radius: 9px; }
+        .review-row { grid-template-columns: 46px minmax(0,1fr); gap: 13px; padding: 18px 0; } .review-poster { width: 46px; } .review-row h3 { font-size: 14px; } .review-row > .text-link { grid-column: 2; justify-self: start; padding: 0; min-height: 28px; margin-top: -8px; } .review-row p { font-size: 12px; } .review-meta { gap: 8px; } .review-section { margin-top: 28px; }
+        .side-layout { display: block; } .profile-sidebar { padding: 0; border: 0; } .profile-sidebar .identity { display: flex; gap: 16px; } .profile-sidebar .portrait { width: 70px; height: 70px; margin: 0; } .profile-sidebar h1 { font-size: 27px; } .profile-sidebar .private-note { margin-top: 11px; } .profile-sidebar .eyebrow { display: none; } .sidebar-bottom { display: none; }
+        .sidebar-nav { display: flex; margin: 24px 0 27px; gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 13px; } .sidebar-nav button { flex: 1; justify-content: center; padding: 10px 6px; gap: 6px; font-size: 11px; } .sidebar-nav .icon { width: 15px; height: 15px; flex-basis: 15px; }
+        .journal-heading { font-size: 29px; } .journal-intro { font-size: 12px; line-height: 1.7; margin-bottom: 22px; } .journal-content .eyebrow { font-size: 10px; } .journal-content .review-row { grid-template-columns: 60px minmax(0,1fr); gap: 14px; padding: 20px 0; } .journal-content .review-row:first-child { padding-top: 0; } .journal-content .review-poster { width: 60px; } .journal-content .review-row h3 { font-size: 16px; margin: 2px 0 8px; } .journal-content .review-row p { font-size: 12px; } .journal-content .favorites-grid { gap: 17px 13px; }
+        .account-layout { grid-template-columns: minmax(0,1fr); gap: 18px; } .account-panel { padding: 20px; } .photo-settings { align-items: start; } .photo-settings > div { min-width: 0; }
+      }
+      @media (max-width: 360px) { .profile-hero .identity-copy { flex-basis: 120px; } }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+    </style>
+  </head>
+  <body>
+    <div class="preview-bar">
+      <div class="preview-copy"><strong>My profile · two design directions</strong><p>Interactive preview · sample account and films · changes are temporary</p></div>
+      <div class="design-switch" role="tablist" aria-label="Profile design options">
+        <button id="design-a" role="tab" aria-selected="true" aria-controls="profile-preview" data-design="a">A · Cinema profile</button>
+        <button id="design-b" role="tab" aria-selected="false" aria-controls="profile-preview" data-design="b" tabindex="-1">B · Personal space</button>
+      </div>
+    </div>
+    <header class="app-header">
+      <div class="brand"><img src="/art/mainflix-mark.webp" alt="" />MAIN<span>FLIX</span></div>
+      <div class="app-links" aria-label="Application navigation preview"><span>This week</span><span>Catalogue</span><span>History</span><span>Reviews</span><span>About Mainflix</span></div>
+      <select aria-label="Language" disabled><option>English</option></select>
+      <img class="mini-avatar" src="/art/creeper-avatar.png" alt="Your profile photo" />
+    </header>
+    <div class="design-context"><span>My profile <span aria-hidden="true">/</span> <b id="direction-name">Cinema profile</b></span><span>Your profile follows you across groups.</span></div>
+    <main class="profile-stage" id="profile-preview" role="tabpanel" aria-labelledby="design-a"></main>
+    <footer class="preview-footer">Design preview · sample data · no account changes are saved</footer>
+    <div class="toast" role="status" hidden></div>
+    <script>
+      // Throwaway preview: sample data stays in memory and never calls the account API.
+      const icons = {
+        lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+        edit: '<path d="m16 3 5 5-12 12H4v-5L16 3Z M13 6l5 5"/>',
+        heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',
+        review: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h10M7 16h6"/>',
+        user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
+      }
+      const icon = (name) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`
+      const films = [
+        { id: 1, title: 'Interstellar', year: 2014, poster: 'gEU2QniE6E77NI6lCU6MxlNBvIx.jpg', group: 'Friday Film Club', rating: 5, date: '16 Nov 2026', review: 'Some films remind you why you love cinema. The score, the scale, that ending. An easy favourite.' },
+        { id: 2, title: 'Dune: Part Two', year: 2024, poster: '1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg', group: 'The usual suspects', rating: 4, date: '9 Nov 2026', review: 'Made for the biggest screen you can find. Still thinking about the final twenty minutes.' },
+        { id: 3, title: 'The Grand Budapest Hotel', year: 2014, poster: 'eWdyYQreja6JGCzqHWXpWHDrrPo.jpg', group: 'Friday Film Club', rating: 5, date: '2 Nov 2026', review: 'Every frame feels like a little world of its own. A perfect pick for our movie night.' },
+        { id: 4, title: 'Spirited Away', year: 2001, poster: '39wmItIWsg5sZMyRUHLkWBcuVCM.jpg' },
+      ]
+      const state = { design: location.hash === '#b' ? 'b' : 'a', section: 'home', name: 'Luna', username: 'luna', avatar: '/art/creeper-avatar.png', favorites: [1,2,3,4] }
+      const stage = document.getElementById('profile-preview')
+      const escape = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+      const photo = (className) => `<img class="${className}" src="${state.avatar}" alt="Profile photo" />`
+      const privacy = () => `<span class="private-note">${icon('lock')} Favorites are private</span>`
+      const identity = () => `<div class="identity">${photo('portrait')}<div class="identity-copy"><p class="eyebrow">My profile</p><h1>${escape(state.name)}</h1><p class="handle">@${escape(state.username)}</p></div>${state.design === 'a' ? `<button class="button-icon" data-section="account">${icon('edit')} Edit profile</button>` : ''}</div>`
+      const tabs = () => state.design === 'a'
+        ? `<div class="section-nav" role="tablist" aria-label="Profile sections">${[['home','Overview'],['favorites','Favorites'],['reviews','My reviews'],['account','Account']].map(([id,label]) => tab(id,label)).join('')}</div>`
+        : `<div class="sidebar-nav" role="tablist" aria-label="Profile sections">${[['home','My reviews','review'],['favorites','Favorites','heart'],['account','Account','user']].map(([id,label,symbol]) => tab(id,label,symbol)).join('')}</div>`
+      const tab = (id,label,symbol) => `<button id="section-${id}" role="tab" aria-controls="section-content" aria-selected="${state.section === id}" tabindex="${state.section === id ? 0 : -1}" data-section="${id}">${symbol ? icon(symbol) : ''}${label}</button>`
+      const rating = (value) => `<span class="diamonds" role="img" aria-label="${value} out of 5 diamonds">${Array.from({ length: 5 }, (_, i) => `<img src="/art/diamond.png" alt="" style="opacity:${i < value ? 1 : .2}" />`).join('')}<span>${value}/5</span></span>`
+      const favorites = (compact = false) => `<section class="${compact ? 'journal-favorites' : ''}" aria-label="Favorite movies"><div class="section-title"><div><h2>${compact ? 'Your favorites' : 'A few of your favourite worlds'}</h2>${compact ? '' : '<p>The films you keep coming back to. Just for you.</p>'}</div>${compact ? '<button class="text-link" data-section="favorites">View all →</button>' : ''}</div><div class="favorites-grid">${state.favorites.map((id) => { const film = films.find((f) => f.id === id); return `<article class="film"><div class="poster-wrap"><img src="https://image.tmdb.org/t/p/w500/${film.poster}" alt="${escape(film.title)} poster" /><button class="heart" data-remove="${id}" aria-label="Remove ${escape(film.title)} from favorites">${icon('heart')}</button></div><h3>${film.title}</h3><p>${film.year}</p></article>` }).join('')}</div>${state.favorites.length ? '' : '<p class="handle">You have no favorite movies yet.</p>'}</section>`
+      const reviews = (limit = 3) => `<section class="review-section" aria-label="My reviews">${state.design === 'a' ? `<div class="section-title"><div><h2>My reviews</h2><p>Your take, after the credits.</p></div>${state.section === 'home' ? '<button class="text-link" data-section="reviews">View all →</button>' : ''}</div>` : ''}<div class="review-list">${films.slice(0,limit).map((film) => `<article class="review-row"><img class="review-poster" src="https://image.tmdb.org/t/p/w185/${film.poster}" alt="" /><div><h3>${film.title}</h3><div class="review-meta">${rating(film.rating)}<span>${film.group} · ${film.date}</span></div><p>${film.review}</p></div><button class="text-link" data-edit="${film.id}" aria-label="Edit review for ${escape(film.title)}">Edit review ↗</button></article>`).join('')}</div></section>`
+      const account = () => `<div class="account-layout"><section class="account-panel"><h2>Profile details</h2><p>A familiar face for your movie nights.</p><div class="photo-settings">${photo('')}<div><label>Profile photo<input type="file" accept="image/png,image/jpeg,image/webp" id="photo-input" /></label><button class="text-link" id="remove-photo">Remove photo</button><small>PNG, JPEG or WebP · up to 20 MB</small></div></div><form id="profile-form"><label>Display name<input name="name" value="${escape(state.name)}" required maxlength="80" autocomplete="name" /></label><label>Username<input name="username" value="${escape(state.username)}" pattern="[a-z0-9_]{3,32}" minlength="3" maxlength="32" required autocomplete="username" autocapitalize="none" spellcheck="false" /></label><small>3–32 lowercase letters, numbers or underscores. This changes your login username.</small><button class="primary">Save profile</button></form></section><section class="account-panel"><h2>Change password</h2><p>Changing your password signs out all sessions.</p><form id="password-form"><label>Current password<input type="password" required maxlength="128" autocomplete="current-password" /></label><label>New password<input type="password" required minlength="6" maxlength="128" autocomplete="new-password" /></label><button class="primary">Update password</button><small>Preview only. No password is sent or saved.</small></form></section></div>`
+      function render() {
+        document.querySelectorAll('[data-design]').forEach((button) => { button.setAttribute('aria-selected', String(button.dataset.design === state.design)); button.tabIndex = button.dataset.design === state.design ? 0 : -1 })
+        stage.setAttribute('aria-labelledby', `design-${state.design}`)
+        document.getElementById('direction-name').textContent = state.design === 'a' ? 'Cinema profile' : 'Personal space'
+        let content = state.section === 'account' ? account() : state.section === 'favorites' ? favorites() : state.design === 'a' && state.section === 'home' ? `${favorites()}${reviews(2)}` : reviews()
+        const panel = `<div id="section-content" role="tabpanel" aria-labelledby="section-${state.section}">${content}</div>`
+        stage.innerHTML = state.design === 'a'
+          ? `<section class="profile-hero">${identity()}${privacy()}</section>${tabs()}${panel}`
+          : `<div class="side-layout"><aside class="profile-sidebar">${identity()}${privacy()}${tabs()}<div class="sidebar-bottom">Your people.<br />Your films. Your point of view.</div></aside><div class="journal-content"><p class="eyebrow">Your personal space</p><h2 class="journal-heading">${state.section === 'account' ? 'Make yourself at home.' : state.section === 'favorites' ? 'The ones you love.' : 'After the credits.'}</h2><p class="journal-intro">${state.section === 'account' ? 'Manage your profile and account security.' : state.section === 'favorites' ? 'A private collection of your favourite films.' : 'Your reviews, from every movie night and every group.'}</p>${panel}${state.section === 'home' ? favorites(true) : ''}</div></div>`
+      }
+      let toastTimer
+      function toast(message) { const element = document.querySelector('.toast'); element.textContent = message; element.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { element.hidden = true }, 4000) }
+      document.addEventListener('click', (event) => {
+        const design = event.target.closest('[data-design]')
+        const section = event.target.closest('[data-section]')
+        const remove = event.target.closest('[data-remove]')
+        if (design) { state.design = design.dataset.design; state.section = 'home'; history.replaceState(null, '', `#${state.design}`); render(); design.focus() }
+        if (section) { state.section = section.dataset.section; render(); document.getElementById(`section-${state.section}`).focus() }
+        if (remove) { state.favorites = state.favorites.filter((id) => id !== Number(remove.dataset.remove)); render(); toast('Removed from this preview. Reload to restore the sample films.'); document.querySelector('[role="tab"][aria-selected="true"][data-section]').focus() }
+        if (event.target.closest('#remove-photo')) { state.avatar = '/art/creeper-avatar.png'; render(); toast('Default photo restored in this preview.'); document.getElementById('remove-photo').focus() }
+        if (event.target.closest('[data-edit]')) toast('In the app, this opens movie details to edit your review.')
+      })
+      document.addEventListener('keydown', (event) => {
+        const tab = event.target.closest('[role="tab"]')
+        if (!tab || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)) return
+        event.preventDefault()
+        const tabs = [...tab.parentElement.querySelectorAll('[role="tab"]')]
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (tabs.indexOf(tab) + (['ArrowRight','ArrowDown'].includes(event.key) ? 1 : -1) + tabs.length) % tabs.length
+        tabs[next].click()
+      })
+      document.addEventListener('submit', (event) => {
+        event.preventDefault()
+        if (event.target.id === 'profile-form') { const data = new FormData(event.target); state.name = String(data.get('name')).trim(); state.username = String(data.get('username')); if (!state.name) { toast('Please enter a display name.'); return } render(); document.querySelector('#profile-form button').focus(); toast('Profile updated in this preview only.') }
+        if (event.target.id === 'password-form') { event.target.reset(); toast('Preview only. Your real password has not changed.') }
+      })
+      document.addEventListener('change', (event) => {
+        if (event.target.id !== 'photo-input') return
+        const file = event.target.files[0]
+        if (!file) return
+        if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 20 * 1024 * 1024) { event.target.value = ''; toast('Choose a PNG, JPEG or WebP image up to 20 MB.'); return }
+        const reader = new FileReader()
+        reader.onerror = () => toast('Unable to read that image. Try another file.')
+        reader.onload = () => { const image = new Image(); image.onerror = () => toast('Choose a valid image.'); image.onload = () => { state.avatar = reader.result; render(); document.getElementById('photo-input').focus(); toast('Photo updated in this preview only.') }; image.src = reader.result }
+        reader.readAsDataURL(file)
+      })
+      render()
+    </script>
+  </body>
+</html>

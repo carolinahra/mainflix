@@ -48,6 +48,7 @@ interface State {
   user: User | null
   round: Serialized<RoundState> | null
   tab: Tab
+  profileSection: 'overview' | 'favorites' | 'myReviews' | 'account'
   search: Serialized<MovieSearch>
   browse: Partial<Record<MovieCategory, Serialized<MovieBrowse>>>
   browseLoading: Partial<Record<MovieCategory, boolean>>
@@ -114,6 +115,7 @@ export class Mainflix extends Component<Props, State> {
     user: null,
     round: null,
     tab: 'week',
+    profileSection: 'overview',
     search: { local: [], remote: [], remoteError: null },
     browse: {},
     browseLoading: {},
@@ -503,6 +505,7 @@ export class Mainflix extends Component<Props, State> {
       invitationLink: null,
       round: null,
       tab: 'week',
+      profileSection: 'overview',
       query: '',
       search: { local: [], remote: [], remoteError: null },
       browse: {},
@@ -843,7 +846,9 @@ export class Mainflix extends Component<Props, State> {
   }
   private navigate(tab: Tab): void {
     this.profileMenu.current?.removeAttribute('open')
-    this.setState({ tab, error: null, message: null }, () => window.scrollTo(0, 0))
+    this.setState({ tab, profileSection: 'overview', error: null, message: null }, () =>
+      window.scrollTo(0, 0),
+    )
     if (tab === 'week') void this.refreshRound()
     if (tab === 'history') void this.loadHistory(false)
     if (tab === 'reviews') void this.loadReviews(false)
@@ -1136,7 +1141,7 @@ export class Mainflix extends Component<Props, State> {
                   >
                     {categories.map((category) => (
                       <option key={category} value={category}>
-                        {this.t(category)}
+                        {this.t(category === 'popular' ? 'allCategories' : category)}
                       </option>
                     ))}
                   </select>
@@ -2685,14 +2690,64 @@ export class Mainflix extends Component<Props, State> {
     )
   }
   private renderFavorites(): ReactNode {
+    const profile = this.state.tab === 'profile'
+    const overview = profile && this.state.profileSection === 'overview'
     return (
       <section aria-labelledby="profile-favorites">
-        <h2 id="profile-favorites">{this.t('favorites')}</h2>
-        {!this.state.favorites.length && <p className="muted">{this.t('noFavorites')}</p>}
-        <div className="movie-grid">
-          {this.state.favorites.map((movie) => this.renderCard(movie))}
+        <div className={profile ? 'profile-section-title' : undefined}>
+          <div>
+            <h2 id="profile-favorites">
+              {this.t(profile ? 'profileFavoritesTitle' : 'favorites')}
+            </h2>
+            {profile && <p>{this.t('profileFavoritesDescription')}</p>}
+          </div>
+          {overview && this.state.favorites.length > 4 && (
+            <button
+              className="profile-text-link"
+              onClick={() => this.selectProfileSection('favorites')}
+            >
+              {this.t('viewAll')} <span aria-hidden="true">→</span>
+            </button>
+          )}
         </div>
-        {this.state.favorites.length >= 30 && (
+        {!this.state.favorites.length && <p className="muted">{this.t('noFavorites')}</p>}
+        <div className={profile ? 'profile-favorites-grid' : 'movie-grid'}>
+          {(overview ? this.state.favorites.slice(0, 4) : this.state.favorites).map((movie) =>
+            profile ? (
+              <article className="profile-film" key={movie.id}>
+                <div className="profile-poster-wrap">
+                  <button
+                    className="poster-button"
+                    aria-label={`${this.t('movieDetails')}: ${movie.title}`}
+                    onClick={() => this.openMovie(movie.id)}
+                  >
+                    {this.renderPoster(movie)}
+                  </button>
+                  <button
+                    className="profile-heart"
+                    aria-label={this.t('removeFavorite')}
+                    title={this.t('removeFavorite')}
+                    disabled={this.state.busy}
+                    onClick={() => this.favorite(movie, false)}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />
+                    </svg>
+                  </button>
+                </div>
+                <h3>
+                  <button className="text-button" onClick={() => this.openMovie(movie.id)}>
+                    {movie.title}
+                  </button>
+                </h3>
+                <p>{movie.release_year}</p>
+              </article>
+            ) : (
+              this.renderCard(movie)
+            ),
+          )}
+        </div>
+        {!overview && this.state.favorites.length >= 30 && (
           <button disabled={this.state.busy} onClick={() => void this.loadFavorites(true)}>
             {this.t('more')}
           </button>
@@ -2700,114 +2755,256 @@ export class Mainflix extends Component<Props, State> {
       </section>
     )
   }
+  private selectProfileSection(profileSection: State['profileSection']): void {
+    this.setState({ profileSection }, () =>
+      document.getElementById(`profile-tab-${profileSection}`)?.focus(),
+    )
+  }
   private renderProfile(): ReactNode {
     const user = this.state.user!
+    const section = this.state.profileSection
+    const sections = ['overview', 'favorites', 'myReviews', 'account'] as const
     return (
       <section className="profile-page">
-        <h1>{this.t('profile')}</h1>
-        <section className="profile-details">
-          <div className="profile-photo">
-            <img src={user.avatar ?? '/art/creeper-avatar.png'} alt={this.t('profilePhoto')} />
-            <label>
-              {this.t('profilePhoto')}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                disabled={this.state.busy}
-                onChange={this.uploadAvatar.bind(this)}
-              />
-            </label>
-            <small className="muted">{this.t('avatarHint')}</small>
-            {user.avatar && (
-              <button
-                disabled={this.state.busy}
-                onClick={() => {
-                  void this.perform(() => this.updateProfile({ avatar: null }))
-                }}
-              >
-                {this.t('removePhoto')}
-              </button>
-            )}
-          </div>
-          <form key={`${user.id}-${user.username}-${user.name}`} onSubmit={this.profile.bind(this)}>
-            <label>
-              {this.t('displayName')}
-              <input
-                name="name"
-                required
-                minLength={1}
-                maxLength={80}
-                defaultValue={user.name}
-                autoComplete="name"
-              />
-            </label>
-            <label>
-              {this.t('username')}
-              <input
-                name="username"
-                required
-                minLength={3}
-                maxLength={32}
-                pattern="[a-z0-9_]{3,32}"
-                defaultValue={user.username}
-                autoComplete="username"
-                autoCapitalize="none"
-                spellCheck={false}
-              />
-            </label>
-            <small className="muted">{this.t('usernameHint')}</small>
-            <button disabled={this.state.busy}>{this.t('saveProfile')}</button>
-          </form>
-        </section>
-        <section aria-labelledby="profile-reviews">
-          <h2 id="profile-reviews">{this.t('myReviews')}</h2>
-          {!this.state.myReviews.length && <p className="muted">{this.t('noReviews')}</p>}
-          {this.state.myReviews.map(({ movie, reviews }) => (
-            <section className="reviewed-movie" key={movie.id}>
-              <h3>{movie.title}</h3>
-              {reviews.map((review) => this.renderReview(review))}
-              <button onClick={() => this.openMovie(movie.id)}>{this.t('rateMovie')}</button>
-            </section>
-          ))}
-          {this.state.myReviews.length >= 30 && (
-            <button
-              disabled={this.state.busy}
-              onClick={() => {
-                void this.loadMyReviews()
-              }}
-            >
-              {this.t('more')}
+        <div className="profile-context">
+          <span>
+            {this.t('profile')} <span aria-hidden="true">/</span> <b>{this.t('cinemaProfile')}</b>
+          </span>
+          <span>{this.t('profileAcrossGroups')}</span>
+        </div>
+        <section className="profile-hero">
+          <div className="profile-identity">
+            <img
+              className="profile-portrait"
+              src={user.avatar ?? '/art/creeper-avatar.png'}
+              alt={this.t('profilePhoto')}
+            />
+            <div className="profile-identity-copy">
+              <p className="profile-eyebrow">{this.t('profile')}</p>
+              <h1>{user.name}</h1>
+              <p className="profile-handle">@{user.username}</p>
+            </div>
+            <button className="profile-edit" onClick={() => this.selectProfileSection('account')}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m16 3 5 5-12 12H4v-5L16 3Z M13 6l5 5" />
+              </svg>
+              {this.t('editProfile')}
             </button>
+          </div>
+          <span className="profile-private">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="5" y="10" width="14" height="11" rx="2" />
+              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+            </svg>
+            {this.t('privateFavorites')}
+          </span>
+        </section>
+        <div
+          className="profile-section-nav"
+          role="tablist"
+          aria-label={this.t('profileSections')}
+          onKeyDown={(event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+            event.preventDefault()
+            const index = sections.indexOf(section)
+            const next =
+              event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? sections.length - 1
+                  : (index + (event.key === 'ArrowRight' ? 1 : -1) + sections.length) %
+                    sections.length
+            this.selectProfileSection(sections[next]!)
+          }}
+        >
+          {sections.map((name) => (
+            <button
+              key={name}
+              id={`profile-tab-${name}`}
+              role="tab"
+              aria-controls="profile-content"
+              aria-selected={section === name}
+              tabIndex={section === name ? 0 : -1}
+              onClick={() => this.selectProfileSection(name)}
+            >
+              {this.t(name === 'overview' ? 'profileOverview' : name)}
+            </button>
+          ))}
+        </div>
+        <div id="profile-content" role="tabpanel" aria-labelledby={`profile-tab-${section}`}>
+          {(section === 'overview' || section === 'favorites') && this.renderFavorites()}
+          {(section === 'overview' || section === 'myReviews') && (
+            <section className="profile-reviews" aria-labelledby="profile-reviews">
+              <div className="profile-section-title">
+                <div>
+                  <h2 id="profile-reviews">{this.t('myReviews')}</h2>
+                  <p>{this.t('profileReviewsDescription')}</p>
+                </div>
+                {section === 'overview' && (
+                  <button
+                    className="profile-text-link"
+                    onClick={() => this.selectProfileSection('myReviews')}
+                  >
+                    {this.t('viewAll')} <span aria-hidden="true">→</span>
+                  </button>
+                )}
+              </div>
+              {!this.state.myReviews.length && <p className="muted">{this.t('noReviews')}</p>}
+              {(section === 'overview'
+                ? this.state.myReviews.slice(0, 2)
+                : this.state.myReviews
+              ).map(({ movie, reviews }) =>
+                reviews.map((review) => (
+                  <article className="profile-review-row" key={`${movie.id}-${review.user_id}`}>
+                    <div className="profile-review-poster">{this.renderPoster(movie)}</div>
+                    <div>
+                      <h3>{movie.title}</h3>
+                      <div className="profile-review-meta">
+                        <span
+                          className="profile-diamonds"
+                          role="img"
+                          aria-label={`${review.rating}/5`}
+                        >
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <span className="rating-diamond" key={n} aria-hidden="true">
+                              <img
+                                src="/art/diamond.png"
+                                alt=""
+                                style={{
+                                  clipPath: `inset(0 ${100 - Math.max(0, Math.min(1, review.rating - n + 1)) * 100}% 0 0)`,
+                                }}
+                              />
+                            </span>
+                          ))}
+                          <span>{review.rating}/5</span>
+                        </span>
+                        <span>
+                          {this.state.groups.find((group) => group.id === movie.group_id)?.name} ·{' '}
+                          <time dateTime={review.updated_at}>
+                            {new Date(review.updated_at).toLocaleDateString(
+                              this.state.language === 'en' ? 'en-GB' : 'es-ES',
+                              { day: 'numeric', month: 'short', year: 'numeric' },
+                            )}
+                          </time>
+                        </span>
+                      </div>
+                      {review.text && <p>{review.text}</p>}
+                    </div>
+                    <button className="profile-text-link" onClick={() => this.openMovie(movie.id)}>
+                      {this.t('editReview')} <span aria-hidden="true">↗</span>
+                    </button>
+                  </article>
+                )),
+              )}
+              {section === 'myReviews' && this.state.myReviews.length >= 30 && (
+                <button disabled={this.state.busy} onClick={() => void this.loadMyReviews()}>
+                  {this.t('more')}
+                </button>
+              )}
+            </section>
           )}
-        </section>
-        {this.renderFavorites()}
-        <section className="password-settings">
-          <h2>{this.t('changePassword')}</h2>
-          <form onSubmit={this.password.bind(this)}>
-            <label>
-              {this.t('currentPassword')}
-              <input
-                name="currentPassword"
-                type="password"
-                autoComplete="current-password"
-                required
-                maxLength={128}
-              />
-            </label>
-            <label>
-              {this.t('newPassword')}
-              <input
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                minLength={6}
-                maxLength={128}
-                required
-              />
-            </label>
-            <button disabled={this.state.busy}>{this.t('save')}</button>
-          </form>
-        </section>
+          {section === 'account' && (
+            <div className="profile-account-layout">
+              <section className="profile-details profile-account-panel">
+                <h2>{this.t('profileDetails')}</h2>
+                <p>{this.t('profileDetailsDescription')}</p>
+                <div className="profile-photo">
+                  <img
+                    src={user.avatar ?? '/art/creeper-avatar.png'}
+                    alt={this.t('profilePhoto')}
+                  />
+                  <div>
+                    <label>
+                      {this.t('profilePhoto')}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={this.state.busy}
+                        onChange={this.uploadAvatar.bind(this)}
+                      />
+                    </label>
+                    {user.avatar && (
+                      <button
+                        className="profile-text-link"
+                        disabled={this.state.busy}
+                        onClick={() => {
+                          void this.perform(() => this.updateProfile({ avatar: null }))
+                        }}
+                      >
+                        {this.t('removePhoto')}
+                      </button>
+                    )}
+                    <small className="muted">{this.t('avatarHint')}</small>
+                  </div>
+                </div>
+                <form
+                  key={`${user.id}-${user.username}-${user.name}`}
+                  onSubmit={this.profile.bind(this)}
+                >
+                  <label>
+                    {this.t('displayName')}
+                    <input
+                      name="name"
+                      required
+                      minLength={1}
+                      maxLength={80}
+                      defaultValue={user.name}
+                      autoComplete="name"
+                    />
+                  </label>
+                  <label>
+                    {this.t('username')}
+                    <input
+                      name="username"
+                      required
+                      minLength={3}
+                      maxLength={32}
+                      pattern="[a-z0-9_]{3,32}"
+                      defaultValue={user.username}
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                    />
+                  </label>
+                  <small className="muted">{this.t('usernameHint')}</small>
+                  <button className="primary" disabled={this.state.busy}>
+                    {this.t('saveProfile')}
+                  </button>
+                </form>
+              </section>
+              <section className="password-settings profile-account-panel">
+                <h2>{this.t('changePassword')}</h2>
+                <p>{this.t('profilePasswordDescription')}</p>
+                <form onSubmit={this.password.bind(this)}>
+                  <label>
+                    {this.t('currentPassword')}
+                    <input
+                      name="currentPassword"
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                      maxLength={128}
+                    />
+                  </label>
+                  <label>
+                    {this.t('newPassword')}
+                    <input
+                      name="password"
+                      type="password"
+                      autoComplete="new-password"
+                      minLength={6}
+                      maxLength={128}
+                      required
+                    />
+                  </label>
+                  <button className="primary" disabled={this.state.busy}>
+                    {this.t('updatePassword')}
+                  </button>
+                </form>
+              </section>
+            </div>
+          )}
+        </div>
       </section>
     )
   }
@@ -3534,11 +3731,13 @@ export class Mainflix extends Component<Props, State> {
         <main
           onPointerDown={() => this.profileMenu.current?.removeAttribute('open')}
           className={
-            this.state.user && this.state.tab === 'week' && !this.state.resetToken
-              ? 'week-page'
-              : this.state.user && this.state.group && this.state.tab === 'catalogue'
-                ? 'catalogue-page'
-                : undefined
+            this.state.user && this.state.tab === 'profile' && !this.state.resetToken
+              ? 'profile-main'
+              : this.state.user && this.state.tab === 'week' && !this.state.resetToken
+                ? 'week-page'
+                : this.state.user && this.state.group && this.state.tab === 'catalogue'
+                  ? 'catalogue-page'
+                  : undefined
           }
         >
           {!this.state.detail &&
@@ -3566,25 +3765,27 @@ export class Mainflix extends Component<Props, State> {
           ) : (
             <>
               {this.state.tab === 'week' && this.renderWelcome()}
-              <section className="group-toolbar">
-                <div className="group-identity">
-                  <strong>{this.state.group.name}</strong>
-                  <small>{this.t('yourMovieGroup')}</small>
-                </div>
-                {this.state.group.is_owner && (
-                  <button
-                    className="group-invite"
-                    aria-label={this.t('inviteToGroup')}
-                    disabled={this.state.busy}
-                    onClick={() => this.invite(this.state.group!.id)}
-                  >
-                    {this.t('inviteShort')} <span aria-hidden="true">↗</span>
-                  </button>
-                )}
-                {!this.state.group.can_vote && !this.state.user.is_admin && (
-                  <span>{this.t('votingNextWeek')}</span>
-                )}
-              </section>
+              {this.state.tab !== 'profile' && (
+                <section className="group-toolbar">
+                  <div className="group-identity">
+                    <strong>{this.state.group.name}</strong>
+                    <small>{this.t('yourMovieGroup')}</small>
+                  </div>
+                  {this.state.group.is_owner && (
+                    <button
+                      className="group-invite"
+                      aria-label={this.t('inviteToGroup')}
+                      disabled={this.state.busy}
+                      onClick={() => this.invite(this.state.group!.id)}
+                    >
+                      {this.t('inviteShort')} <span aria-hidden="true">↗</span>
+                    </button>
+                  )}
+                  {!this.state.group.can_vote && !this.state.user.is_admin && (
+                    <span>{this.t('votingNextWeek')}</span>
+                  )}
+                </section>
+              )}
               {this.state.leavingGroup && (
                 <section className="notice" role="alert">
                   <p>{this.t('leaveGroupWarning')}</p>

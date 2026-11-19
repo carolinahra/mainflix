@@ -98,7 +98,7 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 
 ## Personal profiles and favorites
 
-The circular avatar menu opens **My profile**, which contains display name, unique login username, profile photo, personal reviews, private favorite movies, and password change. Renaming an account preserves its sessions, nominations and reviews; use the new username on the next login. Changing the password still signs out all sessions.
+The circular avatar menu opens **My profile** with a cinematic identity header and **Overview**, **Favorites**, **My reviews**, and **Account** tabs. Overview shows up to four favorites and two personal reviews; the dedicated tabs include the full paginated collections. **Edit profile** opens Account for display name, unique login username, profile photo, and password changes. Renaming an account preserves its sessions, nominations and reviews; use the new username on the next login. Changing the password still signs out all sessions.
 
 Photos accept PNG/JPEG/WebP up to 20 MB in the browser, are center-cropped to a 128×128 WebP thumbnail (JPEG on browsers without WebP encoding, including iPhone), and stored in PostgreSQL (maximum 16 KiB encoded image data). The picker requests JPEG first so iOS can convert HEIC photos from the photo library to a compatible format. Removing a photo restores the default creeper picture. No file-storage service is needed for these small thumbnails. Apply `008_jpeg_avatars.sql` using `npm run db:migrate` before deploying the JPEG fallback; existing photos and sessions are preserved.
 

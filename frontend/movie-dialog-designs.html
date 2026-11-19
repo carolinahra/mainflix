@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mainflix · Movie dialog designs</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <style>
+      :root { --line: #ffffff14; --soft: #b8bbc1; }
+      body { min-width: 320px; }
+      button, a { -webkit-tap-highlight-color: transparent; }
+      button svg { width: 18px; height: 18px; flex: 0 0 18px; }
+      .preview-bar { position: relative; z-index: 20; display: flex; align-items: center; gap: 28px; min-height: 86px; padding: 16px 30px; border-bottom: 1px solid var(--line); background: #15171a; }
+      .preview-heading { margin-right: auto; }
+      .preview-heading strong { font-size: 15px; }
+      .preview-heading p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+      .design-tabs { display: flex; padding: 4px; gap: 4px; background: #0e1012; border: 1px solid var(--line); border-radius: 11px; }
+      .design-tabs button { min-height: 40px; padding: 8px 16px; border: 0; background: none; font-size: 14px; color: var(--muted); }
+      .design-tabs button[aria-selected="true"] { background: #293322; color: #c1fa89; box-shadow: inset 0 0 0 1px #a4ee5726; }
+      .preview-bar select { width: auto; margin: 0; font-size: 13px; background: #202328; min-height: 44px; }
+      .stage { position: relative; isolation: isolate; min-height: calc(100dvh - 86px); padding: 40px 24px; overflow: hidden; }
+      .home-canvas { position: absolute; inset: 0; z-index: -3; pointer-events: none; }
+      .home-header { display: flex; align-items: center; gap: 38px; padding: 18px 4vw; color: #c3c6ca; font-size: 14px; border-bottom: 1px solid var(--line); }
+      .home-header .brand { font-size: 24px; margin-right: 20px; }
+      .home-header .brand img { width: 43px; height: 40px; }
+      .home-header .active { color: white; }
+      .home-hero { min-height: 540px; padding: 90px 6vw; background: linear-gradient(90deg,#101113ed,#10111320),linear-gradient(0deg,#101113,transparent 50%),url('/art/movie-night-hero.webp') center / cover; }
+      .home-hero h1 { max-width: 650px; font-size: 66px; }
+      .home-hero p { max-width: 460px; color: #c3c6ca; line-height: 1.7; }
+      .home-row { padding: 10px 6vw; display: flex; gap: 20px; }
+      .home-row div { height: 230px; flex: 1; border-radius: 12px; background: #22272b; }
+      .veil { position: absolute; inset: 0; z-index: -1; background: #07090bc9; backdrop-filter: blur(7px); transition: opacity .2s; }
+      .movie-modal { position: relative; inset: auto; z-index: 1; width: min(1030px,100%); max-height: calc(100dvh - 166px); padding: 0; margin: 0 auto; border: 1px solid #ffffff20; border-radius: 20px; background: #17191d; box-shadow: 0 30px 120px #000a; overflow: auto; scrollbar-width: thin; scrollbar-color: #454a40 #17191d; }
+      .movie-modal:not([open]) { display: none; }
+      .movie-modal h2 { padding: 0; clear: none; margin: 0; font-size: clamp(30px,3vw,43px); line-height: 1.12; letter-spacing: -.04em; }
+      .movie-modal h3 { font-size: 17px; letter-spacing: -.02em; margin: 0 0 14px; }
+      .movie-modal p { line-height: 1.7; }
+      .movie-modal small { color: var(--muted); }
+      .movie-modal .close-modal { position: absolute; top: 18px; right: 18px; z-index: 5; display: grid; place-items: center; width: 40px; height: 40px; min-height: 40px; padding: 0; border-radius: 50%; border: 1px solid #ffffff20; background: #111519c9; backdrop-filter: blur(12px); font-size: 26px; font-weight: 400; line-height: 1; }
+      .film-eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #b9ed8c; font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; margin: 0 0 12px; }
+      .film-meta { display: flex; align-items: center; gap: 10px; color: #c4c6cb; font-size: 14px; margin: 12px 0 20px; }
+      .film-meta .pill { background: #ffffff09; border: 1px solid #ffffff20; padding: 3px 8px; border-radius: 5px; font-size: 12px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 9px; }
+      .actions button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; min-height: 44px; padding: 10px 16px; }
+      .actions .favorite { width: 46px; padding: 10px; }
+      .favorite[aria-pressed="true"] { color: #baf58b; border-color: #a4ee5750; background: #26311f; }
+      .favorite[aria-pressed="true"] svg { fill: currentColor; }
+      .primary.quiet { background: #a4ee57; box-shadow: none; }
+      .section-label { display: block; color: #a8abb1; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; margin: 0 0 12px; }
+      .synopsis { color: #c4c7cc; font-size: 15px; margin: 0; max-width: 66ch; }
+      .providers { border-top: 1px solid var(--line); padding-top: 23px; margin-top: 26px; }
+      .provider-groups { display: flex; flex-wrap: wrap; gap: 22px; }
+      .provider-group > span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 9px; }
+      .provider-list { display: flex; gap: 8px; }
+      .provider { display: inline-flex; align-items: center; gap: 9px; padding: 7px 10px 7px 7px; background: #22252b; border: 1px solid #ffffff0e; border-radius: 9px; font-size: 13px; color: #e6e7e8; text-decoration: none; }
+      .provider:hover { background: #30343a; }
+      .provider-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 5px; font-weight: 800; background: #111; font-size: 20px; }
+      .provider-icon.netflix { color: #ef3340; }
+      .provider-icon.amazon { color: #e1f3ff; background: #193a4d; font-size: 13px; }
+      .justwatch { display: inline-block; margin-top: 13px; font-size: 11px; color: #8c929d; text-decoration: none; }
+      .justwatch:hover { color: white; text-decoration: underline; }
+      .watched-by { display: flex; align-items: center; gap: 10px; padding-top: 22px; margin-top: 24px; border-top: 1px solid var(--line); color: #a8abb1; font-size: 13px; }
+      .avatar-stack { display: flex; padding-left: 5px; }
+      .avatar-stack .avatar { width: 27px; height: 27px; border: 2px solid #17191d; margin-left: -5px; font-size: 10px; }
+      .avatar { display: inline-grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px; border-radius: 50%; font-size: 12px; font-weight: 600; background: #3e4d35; color: #d5efc6; }
+      .avatar.purple { background: #433753; color: #dfd0ef; }
+      .avatar.blue { background: #263e51; color: #c5e4fa; }
+      .avatar img { image-rendering: pixelated; }
+      .reviews-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+      .reviews-heading h3 { margin: 0; }
+      .review-count { color: var(--muted); font-size: 13px; font-weight: 400; margin-left: 7px; }
+      .rating-summary { display: flex; gap: 6px; align-items: center; font-size: 15px; font-weight: 600; }
+      .rating-summary img { height: 21px; width: 21px; image-rendering: pixelated; }
+      .rating-summary small { font-size: 11px; font-weight: 400; }
+      .review-item { padding: 18px 0; border-top: 1px solid var(--line); }
+      .review-top { display: flex; align-items: center; gap: 9px; }
+      .review-name { font-size: 13px; font-weight: 600; color: #e6e7e9; }
+      .review-name small { display: block; font-size: 11px; font-weight: 400; margin-top: 2px; }
+      .review-rating { margin-left: auto; display: flex; gap: 1px; }
+      .review-rating .rating-diamond { width: 18px; height: 18px; }
+      .review-copy { margin: 11px 0 0; color: #bec2c9; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .own-review { border: 1px solid #a4ee5726; background: #a4ee5705; border-radius: 12px; padding: 17px; margin-bottom: 8px; }
+      .own-review .avatar { background: #314028; }
+      .you-badge { color: #b9eb91; font-size: 10px; background: #a4ee5712; border: 1px solid #a4ee5720; border-radius: 4px; padding: 2px 5px; margin-left: 5px; font-weight: 500; }
+      .edit-review { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 4px 0 0; margin-top: 8px; min-height: 36px; color: #bce693; background: none; font-size: 12px; }
+      .edit-review:hover:not(:disabled) { background: transparent; color: #d8ffb7; }
+      .edit-review svg { width: 13px; height: 13px; flex-basis: 13px; }
+      .own-review.editing { border-color: #a4ee57; box-shadow: 0 0 0 3px #a4ee570a; background: #1b2418; }
+      .editing-label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #c0f28f; margin: 0 0 15px; }
+      .editing-label svg { width: 13px; height: 13px; }
+      .review-form { margin: 0; }
+      .review-form .diamond-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin: 0 0 9px; }
+      .review-form .diamond-picker legend { font-size: 12px; margin-bottom: 5px; color: #c4d3bb; }
+      .review-form .diamond-picker label { width: 17px; height: 40px; }
+      .review-form .diamond-half { background-size: 34px 34px; }
+      .review-form label:has(textarea) { font-size: 12px; color: #c4d3bb; }
+      .review-form textarea { display: block; width: 100%; min-height: 105px; resize: vertical; margin: 8px 0 0; padding: 12px; background: #121910; border: 1px solid #a4ee5770; border-radius: 8px; color: #f1f5ee; font-size: 14px; line-height: 1.65; }
+      .review-form textarea:focus-visible { outline: 2px solid #a4ee57; outline-offset: 2px; }
+      .editor-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; margin-top: 12px; }
+      .editor-footer .actions { gap: 6px; }
+      .editor-footer button { min-height: 38px; font-size: 12px; padding: 8px 12px; }
+      .rating-value { color: #bdd3ad; font-size: 12px; white-space: nowrap; }
+      .locked-reviews { text-align: center; padding: 24px 14px; border: 1px dashed #ffffff1f; border-radius: 12px; }
+      .locked-reviews p { color: var(--muted); font-size: 14px; }
+      .locked-reviews svg { width: 23px; height: 23px; color: #b5d89a; }
+      .new-review { width: 100%; margin-bottom: 18px; background: #232d1e; border: 1px dashed #a4ee5755; color: #c3ed9f; font-size: 14px; }
+      .admin { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 12px; }
+      .admin summary { font-size: 12px; color: #8f959e; }
+      .admin p { font-size: 13px; color: #a8abb1; }
+      .cinema-hero { position: relative; min-height: 278px; padding: 50px 40px 30px; display: flex; align-items: flex-end; background: #1f2b35; overflow: hidden; }
+      .cinema-hero > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 43%; }
+      .cinema-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg,#11171ce6 3%,#11171c35 75%),linear-gradient(0deg,#17191d 0%,#17191d08 90%); }
+      .cinema-title { position: relative; z-index: 1; }
+      .cinema-title h2 { font-size: 48px; }
+      .cinema-title .film-meta { margin-bottom: 0; }
+      .cinema-body { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 0; padding: 4px 0 0; }
+      .cinema-info { padding: 0 34px 32px 40px; }
+      .cinema-info .actions { margin: 8px 0 28px; }
+      .cinema-reviews { padding: 8px 34px 28px; border-left: 1px solid var(--line); }
+      .cinema-reviews .review-copy { font-size: 13px; line-height: 1.65; }
+      .journal-layout { display: grid; grid-template-columns: 250px minmax(0,1fr); }
+      .journal-sidebar { padding: 30px 24px; background: #131619; border-right: 1px solid var(--line); }
+      .poster { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 18px 34px #0004; background: #29313a; }
+      .journal-sidebar .providers { border: 0; margin-top: 26px; padding: 0; }
+      .journal-sidebar .provider-groups { display: grid; gap: 17px; }
+      .journal-sidebar .provider-list { flex-wrap: wrap; }
+      .journal-sidebar .provider { padding: 5px; }
+      .journal-sidebar .provider .provider-name { display: none; }
+      .journal-sidebar .provider-icon { width: 31px; height: 31px; }
+      .journal-main { min-width: 0; padding: 39px 36px 28px; }
+      .journal-main .title-row { padding-right: 30px; }
+      .journal-main .film-meta { margin: 12px 0 24px; }
+      .journal-main .actions { margin: 0 0 24px; }
+      .journal-main .synopsis { margin-bottom: 22px; }
+      .journal-main .watched-by { margin: 0 0 28px; padding: 0; border: 0; }
+      .journal-main .own-review { margin-bottom: 18px; }
+      .journal-main .review-item:not(.own-review) { padding: 18px 0; }
+      .journal-main .review-rating .rating-diamond { width: 20px; height: 20px; }
+      .journal-main .review-copy { margin-top: 10px; }
+      .journal-main .review-top { gap: 10px; }
+      .journal-main .reviews-heading { padding-top: 24px; border-top: 1px solid var(--line); }
+      .preview-note { margin: 18px auto 0; text-align: center; color: #8b929b; font-size: 12px; position: relative; z-index: 1; }
+      .preview-note strong { color: #c2c8ce; font-weight: 500; }
+      .reopen { display: block; margin: 160px auto; position: relative; z-index: 1; }
+      .stage.closed .veil { opacity: 0; }
+      .stage.closed .preview-note { display: none; }
+      .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 12px 20px; max-width: calc(100% - 28px); border: 1px solid #a4ee5740; border-radius: 10px; background: #26321f; color: #ddf6c9; font-size: 14px; box-shadow: 0 10px 30px #0005; }
+      [hidden] { display: none !important; }
+      @media (min-width: 1400px) { .stage { padding-top: 50px; } }
+      @media (max-width: 900px) {
+        .preview-bar { gap: 14px; padding: 14px 18px; flex-wrap: wrap; }
+        .preview-heading { width: 100%; }
+        .preview-heading p { display: none; }
+        .preview-bar select { margin-left: auto; max-width: 180px; }
+        .stage { padding: 24px 16px; min-height: calc(100dvh - 122px); }
+        .movie-modal { max-height: calc(100dvh - 175px); }
+        .cinema-info { padding-left: 25px; padding-right: 25px; }
+        .cinema-reviews { padding-left: 25px; padding-right: 25px; }
+        .cinema-hero { padding-left: 25px; }
+        .journal-layout { grid-template-columns: 195px minmax(0,1fr); }
+        .journal-sidebar { padding: 25px 18px; }
+        .journal-main { padding: 34px 25px 24px; }
+      }
+      @media (max-width: 640px) {
+        .preview-bar { padding: 12px; gap: 9px; }
+        .preview-heading strong { font-size: 14px; }
+        .design-tabs { flex: 1; }
+        .design-tabs button { flex: 1; font-size: 12px; padding: 8px 10px; }
+        .preview-bar select { max-width: 126px; font-size: 12px; padding: 8px 6px; }
+        .stage { padding: 16px 10px 28px; }
+        .movie-modal { max-height: calc(100dvh - 148px); border-radius: 15px; }
+        .movie-modal .close-modal { width: 38px; min-height: 38px; height: 38px; top: 12px; right: 12px; }
+        .movie-modal h2 { font-size: 34px; }
+        .cinema-hero { min-height: 230px; padding: 62px 22px 24px; }
+        .cinema-hero > img { object-position: 58% center; }
+        .cinema-title h2 { font-size: 39px; }
+        .cinema-body { grid-template-columns: minmax(0,1fr); }
+        .cinema-info { padding: 0 22px 23px; }
+        .cinema-info .actions { margin: 5px 0 24px; }
+        .cinema-reviews { border-left: 0; border-top: 1px solid var(--line); padding: 24px 22px 10px; }
+        .journal-layout { display: block; }
+        .journal-sidebar { position: relative; padding: 22px; display: grid; grid-template-columns: 100px minmax(0,1fr); gap: 20px; border-right: 0; border-bottom: 1px solid var(--line); }
+        .journal-sidebar .providers { margin: 0; align-self: center; }
+        .journal-sidebar .section-label { font-size: 11px; }
+        .journal-sidebar .provider-groups { gap: 12px; }
+        .journal-sidebar .provider-group > span { margin-bottom: 6px; }
+        .journal-sidebar .justwatch { margin-top: 10px; }
+        .journal-sidebar .provider { padding: 3px; }
+        .journal-sidebar .provider-icon { width: 26px; height: 26px; }
+        .journal-main { padding: 25px 22px 16px; }
+        .journal-main .title-row { padding: 0; }
+        .film-eyebrow { font-size: 11px; }
+        .journal-main .film-meta { margin: 10px 0 20px; }
+        .journal-main .reviews-heading { padding-top: 22px; }
+        .review-rating .rating-diamond, .journal-main .review-rating .rating-diamond { width: 17px; height: 17px; }
+        .review-name { font-size: 12px; }
+        .preview-note { font-size: 11px; padding: 0 10px; }
+        .home-hero h1 { font-size: 42px; }
+        .home-header { gap: 15px; }
+        .home-header > span:nth-last-child(-n+2) { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+    </style>
+  </head>
+  <body>
+    <div class="preview-bar">
+      <div class="preview-heading"><strong>Movie details · two directions</strong><p>Mainflix design preview · sample reviews and availability</p></div>
+      <div class="design-tabs" role="tablist" aria-label="Design options">
+        <button role="tab" id="tab-a" aria-controls="movie-preview" aria-selected="true" data-design="a">A · Cinema</button>
+        <button role="tab" id="tab-b" aria-controls="movie-preview" aria-selected="false" data-design="b">B · Film journal</button>
+      </div>
+      <select aria-label="Preview movie state" id="preview-state"><option value="saved">Saved movie</option><option value="locked">Reviews locked</option><option value="remote">TMDB preview</option></select>
+    </div>
+    <div class="stage">
+      <div class="home-canvas" aria-hidden="true">
+        <div class="home-header"><div class="brand"><img src="/art/mainflix-mark.webp" alt="" />MAIN<span>FLIX</span></div><span class="active">This week</span><span>Catalogue</span><span>History</span><span>Reviews</span></div>
+        <div class="home-hero"><p class="eyebrow">YOUR PEOPLE. YOUR MOVIE NIGHT.</p><h1>Good friends.<br />Great movies.</h1><p>One group. A world of stories. Find your next movie night together.</p></div>
+        <div class="home-row"><div></div><div></div><div></div><div></div><div></div></div>
+      </div>
+      <div class="veil"></div>
+      <dialog open class="movie-modal" id="movie-preview" aria-label="Interstellar movie details"></dialog>
+      <button class="primary reopen" hidden>Open movie details</button>
+      <p class="preview-note" id="design-note"></p>
+    </div>
+    <div class="toast" role="status" hidden></div>
+    <script>
+      // Throwaway design preview: all actions stay in this page and use sample data.
+      const film = {
+        title: 'Interstellar', year: 2014,
+        synopsis: 'With Earth becoming uninhabitable, a former pilot leaves his family to join a mission beyond our solar system. Across impossible distances, the crew searches for a new home — and a way back to the people they love.',
+        poster: 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/xJHokMbljvjADYdit5fK5VQsXEG.jpg',
+      }
+      const initialReview = { rating: 4.5, text: 'The kind of film that stays with you. That final act gets me every time — definitely one to watch together.' }
+      const state = { design: location.hash === '#b' ? 'b' : 'a', mode: 'saved', favorite: false, watched: true, mine: { ...initialReview }, editing: false, draft: null }
+      const friends = [
+        { name: 'Carol', initials: 'C', color: 'purple', rating: 5, text: 'The music, the scale, the feeling. I forgot to breathe during the docking scene.' },
+        { name: 'Alex', initials: 'A', color: 'blue', rating: 4, text: 'A great pick for movie night. Already looking forward to the conversation afterwards.' },
+      ]
+      const dialog = document.querySelector('.movie-modal')
+      const escape = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+      const icons = {
+        edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/></svg>',
+        heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>',
+        check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>',
+        lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+      }
+      function diamonds(rating) {
+        return `<span class="review-rating" role="img" aria-label="${rating} out of 5 diamonds">${[1,2,3,4,5].map((n) => `<span class="rating-diamond"><img src="/art/diamond.png" alt="" style="clip-path:inset(0 ${100 - Math.max(0, Math.min(1, rating - n + 1)) * 100}% 0 0)"></span>`).join('')}</span>`
+      }
+      function actions() {
+        if (state.mode === 'remote') return '<div class="actions"><button class="primary quiet" data-action="import">+ Add to catalogue</button></div>'
+        return `<div class="actions"><button class="primary quiet" data-action="watched" aria-pressed="${state.watched}">${state.watched ? icons.check + ' Watched' : 'Mark as watched'}</button><button class="favorite" data-action="favorite" aria-label="${state.favorite ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${state.favorite}">${icons.heart}</button></div>`
+      }
+      function providers() {
+        return `<section class="providers" aria-label="Available at"><span class="section-label">Available at</span><div class="provider-groups"><div class="provider-group"><span>Subscription</span><div class="provider-list"><a class="provider" href="https://www.themoviedb.org/movie/157336/watch?locale=ES" target="_blank" rel="noopener noreferrer" aria-label="Netflix availability"><span class="provider-icon netflix">N</span><span class="provider-name">Netflix</span></a></div></div><div class="provider-group"><span>Rent</span><div class="provider-list"><a class="provider" href="https://www.themoviedb.org/movie/157336/watch?locale=ES" target="_blank" rel="noopener noreferrer" aria-label="Amazon Video availability"><span class="provider-icon amazon">a</span><span class="provider-name">Amazon Video</span></a></div></div></div><a class="justwatch" href="https://www.themoviedb.org/movie/157336/watch?locale=ES" target="_blank" rel="noopener noreferrer">Availability in Spain · JustWatch</a></section>`
+      }
+      function watchedBy() {
+        return state.mode === 'remote' ? '' : `<div class="watched-by"><div class="avatar-stack"><span class="avatar purple">C</span><span class="avatar blue">A</span>${state.watched ? '<span class="avatar"><img src="/art/creeper-avatar.png" alt="" /></span>' : ''}</div><span>Watched by Carol, Alex${state.watched ? ' & you' : ''}</span></div>`
+      }
+      function ownReview() {
+        if (state.editing) {
+          const draft = state.draft
+          return `<article class="own-review editing" aria-label="Your review"><div class="editing-label">${icons.edit} Editing your review</div><form class="review-form"><fieldset class="diamond-picker"><legend>Your rating</legend>${Array.from({length: 10}, (_, i) => (i + 1) / 2).map((rating) => `<label title="${rating} out of 5"><input type="radio" name="rating" value="${rating}" aria-label="${rating} out of 5 diamonds" ${draft.rating === rating ? 'checked' : ''} required /><span class="diamond-half" aria-hidden="true"></span></label>`).join('')}</fieldset><label>Your review<textarea name="review" maxlength="10000" placeholder="What did you think?">${escape(draft.text)}</textarea></label><div class="editor-footer"><span class="rating-value">${draft.rating ? draft.rating + ' / 5 diamonds' : 'Choose your rating'}</span><div class="actions"><button type="button" data-action="cancel">Cancel</button><button class="primary quiet" type="submit">Save review</button></div></div></form></article>`
+        }
+        if (!state.mine) return `<button class="new-review" data-action="edit" ${!state.watched ? 'disabled' : ''}>${state.watched ? '+ Write your review' : 'Mark as watched to write a review'}</button>`
+        return `<article class="own-review" aria-label="Your review"><div class="review-top"><span class="avatar"><img src="/art/creeper-avatar.png" alt="" /></span><span class="review-name">You <span class="you-badge">Your review</span></span>${diamonds(state.mine.rating)}</div><p class="review-copy">${escape(state.mine.text)}</p><button class="edit-review" data-action="edit">${icons.edit} Edit review</button></article>`
+      }
+      function reviews() {
+        if (state.mode === 'remote') return '<section class="locked-reviews"><h3>Make it part of movie night</h3><p>Add this film to your group to keep track of watches and reviews.</p></section>'
+        const locked = state.mode === 'locked' && !state.mine
+        const ratings = [...friends.map((review) => review.rating), ...(state.mine ? [state.mine.rating] : [])]
+        const average = (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1)
+        return `<section class="reviews-panel" aria-label="Movie reviews"><div class="reviews-heading"><h3>Our reviews<span class="review-count">${locked ? '2' : ratings.length}</span></h3>${locked ? '' : `<span class="rating-summary"><img src="/art/diamond.png" alt="" />${average}<small>/ 5</small></span>`}</div>${ownReview()}${locked ? `<div class="locked-reviews">${icons.lock}<p>Share your rating to see what<br />your friends thought.</p></div>` : friends.map((review) => `<article class="review-item"><div class="review-top"><span class="avatar ${review.color}">${review.initials}</span><span class="review-name">${review.name}</span>${diamonds(review.rating)}</div><p class="review-copy">${escape(review.text)}</p></article>`).join('')}</section>`
+      }
+      function admin() {
+        return state.mode === 'remote' ? '' : '<details class="admin"><summary>Manage movie</summary><p>Movie details and eligibility settings stay available here for the group owner.</p></details>'
+      }
+      function render() {
+        document.querySelectorAll('[data-design]').forEach((tab) => { const active = tab.dataset.design === state.design; tab.setAttribute('aria-selected', active); tab.tabIndex = active ? 0 : -1 })
+        dialog.setAttribute('aria-labelledby', 'film-title')
+        const title = `<p class="film-eyebrow">${state.mode === 'remote' ? 'Discover something good' : 'Your next movie night'}</p><h2 id="film-title">${film.title}</h2><div class="film-meta"><span>${film.year}</span><span aria-hidden="true">·</span><span class="pill">${state.mode === 'remote' ? 'TMDB' : 'In your catalogue'}</span></div>`
+        const close = '<button class="close-modal" aria-label="Close movie details" data-action="close">×</button>'
+        dialog.innerHTML = state.design === 'a'
+          ? `${close}<div class="cinema-hero"><img src="${film.backdrop}" alt="Interstellar scene in space" /><div class="cinema-title">${title}</div></div><div class="cinema-body"><div class="cinema-info">${actions()}<section><span class="section-label">The story</span><p class="synopsis">${film.synopsis}</p></section>${providers()}${watchedBy()}${admin()}</div><div class="cinema-reviews">${reviews()}</div></div>`
+          : `${close}<div class="journal-layout"><aside class="journal-sidebar"><img class="poster" src="${film.poster}" alt="Interstellar movie poster" />${providers()}</aside><div class="journal-main"><div class="title-row">${title}</div>${actions()}<section><span class="section-label">The story</span><p class="synopsis">${film.synopsis}</p></section>${watchedBy()}${reviews()}${admin()}</div></div>`
+        document.querySelector('#design-note').innerHTML = state.design === 'a' ? '<strong>A · Cinema</strong> — a cinematic first impression, with story and reviews side by side.' : '<strong>B · Film journal</strong> — a poster-led layout with a quieter, roomier reading flow.'
+      }
+      function readDraft() {
+        const form = dialog.querySelector('.review-form')
+        if (form) state.draft = { rating: Number(form.querySelector('input:checked')?.value ?? 0), text: form.querySelector('textarea').value }
+      }
+      function toast(message) {
+        const element = document.querySelector('.toast')
+        element.textContent = message
+        element.hidden = false
+        clearTimeout(toast.timer)
+        toast.timer = setTimeout(() => { element.hidden = true }, 2500)
+      }
+      function focusEditor() { dialog.querySelector('textarea')?.focus({ preventScroll: true }) }
+      document.querySelectorAll('[data-design]').forEach((tab) => tab.addEventListener('click', () => {
+        readDraft(); state.design = tab.dataset.design; history.replaceState(null, '', '#' + state.design); render()
+      }))
+      document.querySelector('.design-tabs').addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        const id = event.key === 'Home' ? 'a' : event.key === 'End' ? 'b' : state.design === 'a' ? 'b' : 'a'
+        const tab = document.querySelector(`[data-design="${id}"]`)
+        tab.click(); tab.focus()
+      })
+      document.querySelector('#preview-state').addEventListener('change', (event) => {
+        state.mode = event.target.value; state.editing = false; state.draft = null; state.mine = state.mode === 'saved' ? { ...initialReview } : null; state.watched = true; render()
+      })
+      dialog.addEventListener('click', (event) => {
+        const action = event.target.closest('[data-action]')?.dataset.action
+        if (!action) return
+        if (action === 'close') { dialog.close(); document.querySelector('.stage').classList.add('closed'); document.querySelector('.reopen').hidden = false; document.querySelector('.reopen').focus(); return }
+        if (action === 'edit') { state.editing = true; state.draft = { ...(state.mine ?? { rating: 0, text: '' }) }; render(); focusEditor() }
+        if (action === 'cancel') { state.editing = false; state.draft = null; render(); dialog.querySelector('[data-action="edit"]')?.focus() }
+        if (action === 'favorite') { state.favorite = !state.favorite; const button = event.target.closest('button'); button.setAttribute('aria-pressed', state.favorite); button.setAttribute('aria-label', state.favorite ? 'Remove from favorites' : 'Add to favorites'); toast(state.favorite ? 'Added to favorites · preview only' : 'Removed from favorites · preview only') }
+        if (action === 'watched') { toast('Watched status is a demo here; your real viewing history stays unchanged.') }
+        if (action === 'import') { state.mode = 'saved'; document.querySelector('#preview-state').value = 'saved'; state.mine = null; render(); toast('Added to the demo catalogue') }
+      })
+      dialog.addEventListener('change', (event) => {
+        if (event.target.name === 'rating') dialog.querySelector('.rating-value').textContent = event.target.value + ' / 5 diamonds'
+      })
+      dialog.addEventListener('submit', (event) => {
+        event.preventDefault(); readDraft(); state.mine = { ...state.draft }; state.editing = false; state.draft = null; render(); dialog.querySelector('[data-action="edit"]')?.focus(); toast('Review saved · preview only')
+      })
+      document.querySelector('.reopen').addEventListener('click', () => {
+        dialog.show(); document.querySelector('.stage').classList.remove('closed'); document.querySelector('.reopen').hidden = true; dialog.querySelector('.close-modal').focus()
+      })
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && dialog.open) dialog.querySelector('.close-modal').click() })
+      render()
+    </script>
+  </body>
+</html>

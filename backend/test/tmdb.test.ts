@@ -170,6 +170,19 @@ test('year filters use an inclusive primary release year range', async () => {
   }
 })
 
+test('the random picker default searches all categories while respecting year filters', async () => {
+  const tmdb = new Tmdb('test', async (input) => {
+    const url = new URL(String(input))
+    assert.equal(url.pathname, '/3/discover/movie')
+    assert.equal(url.searchParams.get('with_genres'), null)
+    assert.equal(url.searchParams.get('with_keywords'), null)
+    assert.equal(url.searchParams.get('primary_release_date.gte'), '1990-01-01')
+    assert.equal(url.searchParams.get('primary_release_date.lte'), '2020-12-31')
+    return Response.json({ results: [], total_pages: 0 })
+  })
+  await tmdb.browse('popular', 'en', 1, new Date(), 1990, 2020)
+})
+
 test('Barbie browsing searches Barbie titles with paginated results', async () => {
   const tmdb = new Tmdb('test', async (input) => {
     const url = new URL(String(input))

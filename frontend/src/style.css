@@ -1205,24 +1205,531 @@ dialog h2 {
 dialog small {
   color: var(--muted);
 }
-.profile-page > section {
-  margin: 2rem 0;
+.profile-main {
+  max-width: 1220px;
+  padding: 0 28px 65px;
 }
-.profile-details {
+.profile-page {
+  --profile-line: #ffffff13;
+}
+.profile-context {
+  padding: 25px 0 0;
+  margin-bottom: 23px;
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.profile-context > span:first-child {
+  color: #d0d2d6;
+}
+.profile-context b {
+  color: var(--green);
+  font-weight: 500;
+}
+.profile-identity {
+  display: flex;
+  gap: 23px;
+  align-items: flex-end;
+}
+.profile-identity-copy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.profile-portrait {
+  width: 112px;
+  height: 112px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  background: #24331f;
+  border: 5px solid #171a1b;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #ffffff20;
+}
+.profile-eyebrow {
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #c2ed9f;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+.profile-identity h1 {
+  margin: 0;
+  font-size: clamp(32px, 4vw, 46px);
+  letter-spacing: -0.045em;
+  text-wrap: initial;
+}
+.profile-handle {
+  color: #c3c8c5;
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+.profile-private {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #bcc6bd;
+  margin-top: 18px;
+}
+.profile-edit svg,
+.profile-private svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 18px;
+}
+.profile-edit {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  background: #151a18a8;
+  border-color: #ffffff25;
+  backdrop-filter: blur(10px);
+}
+.profile-hero {
+  position: relative;
+  isolation: isolate;
+  padding: 64px 35px 29px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #1d2722;
+}
+.profile-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(0deg, #151a19 4%, #151a19c9 45%, #151a1950),
+    url('/art/movie-night-hero.webp') center 47% / cover;
+}
+.profile-section-nav {
+  display: flex;
+  gap: 27px;
+  border-bottom: 1px solid var(--profile-line);
+  margin: 9px 0 30px;
+}
+.profile-section-nav button {
+  border: 0;
+  background: none;
+  border-radius: 0;
+  padding: 21px 0 17px;
+  color: var(--muted);
+  font-size: 14px;
+  position: relative;
+  white-space: nowrap;
+}
+.profile-section-nav button:hover:not(:disabled) {
+  background: transparent;
+  color: #e5f4d8;
+}
+.profile-section-nav button[aria-selected='true'] {
+  color: #e5f4d8;
+}
+.profile-section-nav button[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--green);
+}
+.profile-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin: 0 0 20px;
+}
+.profile-section-title h2 {
+  font-size: 21px;
+  margin: 0;
+  letter-spacing: -0.035em;
+}
+.profile-section-title p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.profile-text-link {
+  border: 0;
+  background: none;
+  color: #bae58e;
+  padding: 6px 0;
+  min-height: 44px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.profile-text-link:hover:not(:disabled) {
+  background: none;
+  color: #d5ffad;
+}
+.profile-favorites-grid {
   display: grid;
-  grid-template-columns: minmax(0, 240px) minmax(0, 540px);
-  gap: 2rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 19px;
+}
+.profile-film {
+  min-width: 0;
+}
+.profile-poster-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 11px;
+  background: #252b2c;
+  aspect-ratio: 2 / 2.75;
+}
+.profile-poster-wrap .poster-button,
+.profile-poster-wrap img,
+.profile-poster-wrap .poster-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  aspect-ratio: auto;
+}
+.profile-poster-wrap .poster-fallback {
+  display: grid;
+}
+.profile-poster-wrap::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 55% 0 0;
+  background: linear-gradient(transparent, #080b0db0);
+}
+.profile-heart {
+  position: absolute;
+  z-index: 1;
+  right: 10px;
+  top: 10px;
+  width: 36px;
+  min-height: 36px;
+  padding: 8px;
+  display: grid;
+  place-items: center;
+  background: #111712cb;
+  border: 1px solid #ffffff30;
+  color: #bbf292;
+  border-radius: 50%;
+  backdrop-filter: blur(10px);
+}
+.profile-heart svg {
+  fill: currentColor;
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.profile-film h3 {
+  margin: 12px 0 5px;
+  font-size: 14px;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+.profile-film h3 .text-button {
+  font: inherit;
+  text-align: left;
+  line-height: inherit;
+  min-height: 0;
+  padding: 0;
+}
+.profile-film p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.profile-reviews {
+  margin-top: 36px;
+}
+.profile-review-row {
+  display: grid;
+  grid-template-columns: 61px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 17px;
+  padding: 20px 0;
+  border-top: 1px solid var(--profile-line);
+}
+.profile-review-poster {
+  width: 61px;
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  background: #252b2c;
+  overflow: hidden;
+}
+.profile-review-poster img,
+.profile-review-poster .poster-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  aspect-ratio: auto;
+}
+.profile-review-row h3 {
+  margin: 2px 0 7px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.profile-review-meta {
+  color: var(--muted);
+  font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+.profile-review-row p {
+  margin: 11px 0 0;
+  color: #c7c9ce;
+  line-height: 1.65;
+  font-size: 13px;
+  max-width: 70ch;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.profile-diamonds {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.profile-diamonds .rating-diamond {
+  width: 15px;
+  height: 15px;
+}
+.profile-diamonds > span:last-child {
+  color: #d5e3cd;
+  margin-left: 4px;
+  font-size: 11px;
+}
+.profile-review-row > .profile-text-link {
+  color: #b2b7be;
+  font-size: 12px;
+}
+.profile-account-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 32px;
+}
+.profile-account-panel {
+  padding: 25px;
+  background: #191c20;
+  border: 1px solid var(--profile-line);
+  border-radius: 13px;
+  min-width: 0;
+}
+.profile-account-panel h2 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+.profile-account-panel > p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0 0 23px;
+}
+.profile-account-panel form {
+  gap: 18px;
+}
+.profile-account-panel label {
+  gap: 8px;
+  font-size: 13px;
+  margin: 0;
+}
+.profile-account-panel input {
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+  background: #111417;
+  border-color: #ffffff23;
+}
+.profile-account-panel small {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.profile-account-panel .primary {
+  justify-self: start;
+  font-size: 13px;
+  padding-inline: 22px;
 }
 .profile-photo {
-  display: grid;
-  align-content: start;
-  gap: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  padding-bottom: 23px;
+  margin-bottom: 23px;
+  border-bottom: 1px solid var(--profile-line);
 }
 .profile-photo > img {
-  width: 96px;
-  height: 96px;
+  width: 65px;
+  height: 65px;
+  flex: 0 0 auto;
   object-fit: cover;
   border-radius: 50%;
+}
+.profile-photo > div {
+  min-width: 0;
+}
+.profile-photo label {
+  gap: 6px;
+  font-size: 12px;
+}
+.profile-photo input {
+  font-size: 11px;
+  padding: 6px;
+}
+.profile-photo .profile-text-link {
+  text-align: left;
+  font-size: 11px;
+  padding: 0;
+  min-height: 28px;
+}
+.profile-photo small {
+  display: block;
+  margin-top: 3px;
+}
+@media (min-width: 1400px) {
+  .profile-context {
+    margin-bottom: 30px;
+  }
+  .profile-hero {
+    padding-top: 90px;
+  }
+}
+@media (max-width: 650px) {
+  .profile-main {
+    padding: 0 18px 35px;
+  }
+  .profile-context {
+    padding-top: 19px;
+    margin-bottom: 18px;
+    font-size: 11px;
+  }
+  .profile-context > span:last-child {
+    display: none;
+  }
+  .profile-hero {
+    padding: 49px 22px 23px;
+    border-radius: 14px;
+  }
+  .profile-hero::before {
+    background-position: 64% center;
+  }
+  .profile-identity {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .profile-portrait {
+    width: 78px;
+    height: 78px;
+    border-width: 3px;
+  }
+  .profile-identity h1 {
+    font-size: 30px;
+  }
+  .profile-eyebrow {
+    font-size: 10px;
+    margin-bottom: 7px;
+  }
+  .profile-edit {
+    margin: 3px 0 0;
+    min-height: 39px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .profile-private {
+    margin-top: 8px;
+    font-size: 11px;
+  }
+  .profile-section-nav {
+    gap: 22px;
+    margin-bottom: 25px;
+    overflow-x: auto;
+  }
+  .profile-section-nav button {
+    font-size: 12px;
+    padding: 18px 0 14px;
+  }
+  .profile-section-title {
+    gap: 8px;
+    margin-bottom: 15px;
+  }
+  .profile-section-title h2 {
+    font-size: 19px;
+  }
+  .profile-section-title p {
+    font-size: 12px;
+  }
+  .profile-text-link {
+    font-size: 12px;
+  }
+  .profile-favorites-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 19px 14px;
+  }
+  .profile-film h3 {
+    font-size: 13px;
+  }
+  .profile-film p {
+    font-size: 11px;
+  }
+  .profile-poster-wrap {
+    border-radius: 9px;
+  }
+  .profile-review-row {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 13px;
+    padding: 18px 0;
+  }
+  .profile-review-poster {
+    width: 46px;
+  }
+  .profile-review-row h3 {
+    font-size: 14px;
+  }
+  .profile-review-row > .profile-text-link {
+    grid-column: 2;
+    justify-self: start;
+    padding: 0;
+    min-height: 28px;
+    margin-top: -8px;
+  }
+  .profile-review-row p {
+    font-size: 12px;
+  }
+  .profile-review-meta {
+    gap: 8px;
+  }
+  .profile-reviews {
+    margin-top: 28px;
+  }
+  .profile-account-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .profile-account-panel {
+    padding: 20px;
+  }
+  .profile-photo {
+    align-items: start;
+  }
+}
+@media (max-width: 360px) {
+  .profile-identity-copy {
+    flex-basis: 120px;
+  }
 }
 .review-avatar {
   width: 28px;
@@ -1246,11 +1753,6 @@ dialog small {
   height: 100%;
   object-fit: cover;
   border-radius: inherit;
-}
-@media (max-width: 760px) {
-  .profile-details {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 .reviewed-movie {
   padding: 1.25rem;

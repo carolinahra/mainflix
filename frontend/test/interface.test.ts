@@ -589,6 +589,7 @@ test('random nomination offers filters and confirmation only while a player can 
   const markup = renderToStaticMarkup(app.render())
   assert.match(markup, /<dialog[^>]*aria-labelledby="random-title"/)
   assert.match(markup, /From year/)
+  assert.match(markup, /<option value="popular" selected="">All categories<\/option>/)
   assert.match(markup, /To year/)
   assert.match(markup, /Random pick/)
   assert.match(markup, /Accept and nominate/)
@@ -957,6 +958,44 @@ test('personal favorites from another group do not offer nomination in the curre
   const markup = renderToStaticMarkup(app.render())
   assert.match(markup, /Go to my profile/)
   assert.match(markup, /My profile/)
+})
+
+test('Cinema profile separates account settings and limits the overview without losing saved films', () => {
+  Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
+  const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
+  app.state = {
+    ...app.state,
+    loading: false,
+    tab: 'profile',
+    user: { id: 1, name: 'Luna', username: 'luna', email: null, is_admin: false, avatar: null },
+    favorites: Array.from({ length: 6 }, (_, index) => ({
+      id: index + 1,
+      group_id: 1,
+      title: `Favorite ${index + 1}`,
+      tmdb_id: null,
+      release_year: 2020,
+      overview: '',
+      poster_path: null,
+      approval_status: 'approved',
+      submitted_by: null,
+      eligible: true,
+      eligibility_changed_by: null,
+      eligibility_changed_at: null,
+      created_at: '2026-11-16T12:00:00Z',
+    })),
+  }
+  const overview = renderToStaticMarkup(app.render())
+  assert.match(overview, /<h1>Luna<\/h1>/)
+  assert.match(overview, /Favorites are private/)
+  assert.equal((overview.match(/class="profile-film"/g) ?? []).length, 4)
+  assert.doesNotMatch(overview, /name="currentPassword"|name="username"/)
+  app.state.profileSection = 'favorites'
+  assert.equal((renderToStaticMarkup(app.render()).match(/class="profile-film"/g) ?? []).length, 6)
+  app.state.profileSection = 'account'
+  const account = renderToStaticMarkup(app.render())
+  assert.match(account, /name="currentPassword"/)
+  assert.match(account, /pattern="\[a-z0-9_\]\{3,32\}"/)
+  assert.doesNotMatch(account, /class="profile-film"/)
 })
 
 test('catalogue hearts recognize saved movies outside the first page of favorites', () => {
