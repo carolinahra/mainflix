@@ -54,6 +54,7 @@ interface State {
   catalogueFilter: 'all' | 'pending' | 'watched'
   query: string
   detail: Detail | null
+  remoteDetail: MovieMetadata | null
   watchProviders: Record<number, MovieWatchProviders | null>
   history: Serialized<HistoryEntry>[]
   reviewed: Serialized<ReviewedMovie>[]
@@ -117,6 +118,7 @@ export class Mainflix extends Component<Props, State> {
     catalogueFilter: 'all',
     query: '',
     detail: null,
+    remoteDetail: null,
     watchProviders: {},
     history: [],
     reviewed: [],
@@ -450,7 +452,7 @@ export class Mainflix extends Component<Props, State> {
     this.browseControllers.forEach((controller) => controller.abort())
   }
   override componentDidUpdate(): void {
-    const id = this.state.detail?.movie.tmdb_id
+    const id = this.state.detail?.movie.tmdb_id ?? this.state.remoteDetail?.tmdb_id
     if (id) void this.loadWatchProviders(id)
   }
   private async loadWatchProviders(id: number): Promise<void> {
@@ -510,6 +512,7 @@ export class Mainflix extends Component<Props, State> {
       pending: [],
       accounts: [],
       detail: null,
+      remoteDetail: null,
       watchProviders: {},
       spinning: false,
       surveyRound: null,
@@ -596,6 +599,7 @@ export class Mainflix extends Component<Props, State> {
             this.state.surveyDismissed !== current.week &&
             !this.state.spinning &&
             !this.state.detail &&
+            !this.state.remoteDetail &&
             !this.state.randomOpen &&
             this.state.tab === 'week'
           )
@@ -1620,14 +1624,19 @@ export class Mainflix extends Component<Props, State> {
       const detail: Detail = await this.props.container.api.request(
         `/movies/${id}?language=${this.state.language}`,
       )
-      this.setState({ detail }, (): void => {
+      this.setState({ detail, remoteDetail: null }, (): void => {
         if (!this.dialog.current?.open) this.dialog.current?.showModal()
       })
     })
   }
+  private openRemoteMovie(movie: MovieMetadata): void {
+    this.setState({ remoteDetail: movie, detail: null, unmarkingWatched: false }, () => {
+      if (!this.dialog.current?.open) this.dialog.current?.showModal()
+    })
+  }
   private closeDetail(): void {
     this.dialog.current?.close()
-    this.setState({ detail: null, unmarkingWatched: false })
+    this.setState({ detail: null, remoteDetail: null, unmarkingWatched: false })
   }
   private watched(watched: boolean): void {
     const id: number | undefined = this.state.detail?.movie.id
@@ -1896,10 +1905,24 @@ export class Mainflix extends Component<Props, State> {
     )
     return (
       <article className="movie-card" key={`tmdb-${movie.tmdb_id}`}>
-        {this.renderPoster(movie)}
+        <button
+          className="poster-button"
+          aria-label={`${this.t('movieDetails')}: ${movie.title}`}
+          onClick={() => this.openRemoteMovie(movie)}
+        >
+          {this.renderPoster(movie)}
+        </button>
         <div className="movie-card-body">
           <p className="movie-year muted">{movie.release_year}</p>
-          <h3 title={movie.title}>{movie.title}</h3>
+          <h3>
+            <button
+              className="text-button"
+              title={movie.title}
+              onClick={() => this.openRemoteMovie(movie)}
+            >
+              {movie.title}
+            </button>
+          </h3>
           <div className="movie-actions">
             <button
               className="movie-nominate"
@@ -2916,6 +2939,21 @@ export class Mainflix extends Component<Props, State> {
   }
   private renderDetail(): ReactNode {
     const detail: Detail | null = this.state.detail
+    if (this.state.remoteDetail) {
+      const movie = this.state.remoteDetail
+      return (
+        <>
+          <button className="close" onClick={this.closeDetail.bind(this)}>
+            {this.t('close')} ×
+          </button>
+          <h2>
+            {movie.title} <small>{movie.release_year}</small>
+          </h2>
+          <p>{movie.overview}</p>
+          {this.renderWatchProviders(movie.tmdb_id)}
+        </>
+      )
+    }
     if (!detail) return null
     const { movie, reviews, watched } = detail
     const mine = reviews.find((r) => r.user_id === this.state.user?.id)
@@ -3239,6 +3277,7 @@ export class Mainflix extends Component<Props, State> {
           }
         >
           {!this.state.detail &&
+            !this.state.remoteDetail &&
             !this.state.randomOpen &&
             !this.state.surveyRound &&
             this.renderErrorToast()}
@@ -3350,7 +3389,7 @@ export class Mainflix extends Component<Props, State> {
           <small>{this.t('tmdbCredit')}</small>
         </footer>
         <dialog ref={this.dialog} onCancel={this.closeDetail.bind(this)}>
-          {this.state.detail && this.renderErrorToast()}
+          {(this.state.detail || this.state.remoteDetail) && this.renderErrorToast()}
           {this.renderDetail()}
         </dialog>
         {this.renderSurvey()}

@@ -177,7 +177,7 @@ test('availability appears only in the movie dialog with subscription, rental an
   assert.doesNotMatch(renderToStaticMarkup(app.render()), /Disponible en|JustWatch/)
 })
 
-test('unimported TMDB catalogue cards do not show availability', () => {
+test('unimported TMDB catalogue cards offer title and poster details without inline availability', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const app = new Mainflix({ container: { i18n: new I18n('en') } as Container })
   app.state = {
@@ -209,6 +209,8 @@ test('unimported TMDB catalogue cards do not show availability', () => {
   }
   const markup = renderToStaticMarkup(app.render())
   assert.match(markup, /Unimported film/)
+  assert.match(markup, /<button class="text-button"[^>]*>Unimported film<\/button>/)
+  assert.match(markup, /<button class="poster-button" aria-label="Movie details: Unimported film"/)
   assert.doesNotMatch(markup, /Available at|alt="Netflix"/)
 })
 
@@ -472,7 +474,7 @@ test('discovery features requested films and puts favorite genres before other b
   assert.match(markup, /Populares en España/)
   assert.doesNotMatch(markup, /Vuestras imprescindibles|Estrenos en España|popularidad global/)
   assert.equal((markup.match(/id="browse-popular"/g) ?? []).length, 1)
-  assert.equal((markup.match(/<h3[^>]*>La bola negra<\/h3>/g) ?? []).length, 1)
+  assert.equal((markup.match(/<h3><button[^>]*>La bola negra<\/button><\/h3>/g) ?? []).length, 1)
   assert.ok(markup.indexOf('La bola negra') < markup.indexOf('id="movie-catalogue"'))
   assert.match(markup, /Explorar por género/)
   assert.match(markup, /id="browse-barbie">Barbie/)

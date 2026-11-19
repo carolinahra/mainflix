@@ -270,7 +270,7 @@ test('creators manage groups and availability opens only with movie details on d
       const page = await f.page(mobile)
       await page.route('**/api/movies/browse?**', async route => {
         const category = new URL(route.request().url()).searchParams.get('category')
-        await route.fulfill({ json: { local: [], remote: category === 'popular' ? [{ tmdb_id: 42, title: 'Unimported film', release_year: 2026, overview: '', poster_path: null }] : [], remoteError: null, page: 1, totalPages: 1 } })
+        await route.fulfill({ json: { local: [], remote: category === 'popular' ? [{ tmdb_id: 42, title: 'Unimported film', release_year: 2026, overview: 'A story about an unexpected movie night.', poster_path: null }] : [], remoteError: null, page: 1, totalPages: 1 } })
       })
       let providerRequests = 0
       await page.route('**/api/movies/providers/42', route => {
@@ -295,13 +295,24 @@ test('creators manage groups and availability opens only with movie details on d
       await card.scrollIntoViewIfNeeded()
       assert.equal(await card.getByRole('heading', { name: 'Available at', exact: true }).count(), 0)
       assert.equal(providerRequests, 0)
+      const detail = page.getByRole('dialog')
+      for (const name of ['Unimported film', 'Movie details: Unimported film']) {
+        await card.getByRole('button', { name, exact: true }).click()
+        await detail.getByText('A story about an unexpected movie night.', { exact: true }).waitFor()
+        await detail.getByRole('img', { name: 'Netflix', exact: true }).waitFor()
+        await detail.getByRole('img', { name: 'Amazon Video', exact: true }).waitFor()
+        assert.equal(await detail.getByRole('heading', { name: 'Available at', exact: true }).count(), 1)
+        assert.equal(await detail.getByRole('link', { name: 'JustWatch', exact: true }).count(), 1)
+        assert.equal(await detail.getByRole('button', { name: 'Mark as watched', exact: true }).count(), 0)
+        await detail.getByRole('button', { name: 'Close ×', exact: true }).click()
+      }
+      assert.equal(providerRequests, 1)
       assert.equal((await f.database.client.selectFrom('movies').select('id').where('tmdb_id', '=', 42).execute()).length, 0)
       await f.database.client.insertInto('movies').values({
         group_id: group.id, tmdb_id: 42, title: 'Provider film', approval_status: 'approved',
       }).execute()
       await page.getByRole('button', { name: /^(Catalogue|Movies)$/ }).click()
       await page.locator('#movie-catalogue').getByRole('button', { name: 'Provider film', exact: true }).click()
-      const detail = page.getByRole('dialog')
       await detail.getByRole('img', { name: 'Netflix', exact: true }).waitFor()
       assert.equal(await detail.getByRole('heading', { name: 'Available at', exact: true }).count(), 1)
       assert.equal(providerRequests, 1)
