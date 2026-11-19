@@ -217,7 +217,22 @@ test('movie availability keeps authentication and group scope and tolerates miss
   let unavailable = false
   f.container.tmdb = new Tmdb('test', async () => {
     if (unavailable) return new Response('', { status: 503 })
-    return Response.json({ id: 1, results: { ES: providers } })
+    return Response.json({
+      id: 1,
+      results: {
+        ES: {
+          ...providers,
+          flatrate: [
+            ...providers.flatrate,
+            {
+              provider_id: 1796,
+              provider_name: 'Netflix Standard with Ads',
+              logo_path: '/netflix.jpg',
+            },
+          ],
+        },
+      },
+    })
   })
   const app = f.container.application.app
   await request(app).get(`/api/movies/${movie.id}/providers`).expect(401)

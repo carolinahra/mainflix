@@ -85,9 +85,32 @@ export class Tmdb {
     try {
       const provider = z.object({
         provider_id: z.number().int().positive(),
-        provider_name: z.string().min(1).max(300),
+        provider_name: z
+          .string()
+          .trim()
+          .min(1)
+          .max(300)
+          .transform((name) =>
+            name
+              .replace(/\s+(?:Amazon|Apple TV|Roku)(?: Premium)? Channels?$/i, '')
+              .replace(
+                /\s+(?:standard|basic|premium|essential|ultimate|estándar|básico|(?:free )?with ads|without ads|ad[- ]supported|ad[- ]free|con anuncios|sin anuncios|ficción total|plan familiar)\b.*$/i,
+                '',
+              )
+              .replace(/^(Filmin|JustWatch TV) Plus$/i, '$1'),
+          ),
         logo_path: z.string().regex(/^\/[A-Za-z0-9._-]+$/),
       })
+      const platforms = z
+        .array(provider)
+        .transform((entries) =>
+          entries.filter(
+            (entry, index) =>
+              entries.findIndex(
+                (other) => other.provider_name.toLowerCase() === entry.provider_name.toLowerCase(),
+              ) === index,
+          ),
+        )
       const { results } = z
         .object({
           results: z.object({
@@ -97,8 +120,8 @@ export class Tmdb {
                   .string()
                   .url()
                   .regex(/^https:\/\/www\.themoviedb\.org\/movie\//),
-                flatrate: z.array(provider).default([]),
-                rent: z.array(provider).default([]),
+                flatrate: platforms.default([]),
+                rent: platforms.default([]),
               })
               .optional(),
           }),

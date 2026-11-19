@@ -47,6 +47,71 @@ test('watch providers return only Spanish subscriptions and rentals with platfor
   assert.deepEqual(await tmdb.watchProviders(1), { link, flatrate: [netflix], rent: [amazon] })
 })
 
+test('watch providers show platform names once per availability type without plans', async () => {
+  const names = [
+    'Netflix',
+    'Netflix Standard with Ads',
+    'Netflix Básico con anuncios',
+    'Amazon Prime Video with Ads',
+    'Amazon Prime Video Free with Ads',
+    'Movistar Plus+ Ficción Total',
+    'Movistar Plus+',
+    'Filmin Plus',
+    'Filmin',
+    'Disney Plus Premium',
+    'HBO Max Amazon Channel',
+    'HBO Max',
+    'Paramount Plus Essential',
+    'MUBI Amazon Channel',
+    'Acontra Plus',
+    'Apple TV',
+    'Indie Platform Standard with Ads',
+  ]
+  const providers = names.map((provider_name, index) => ({
+    provider_id: index + 1,
+    provider_name,
+    logo_path: `/logo-${index}.jpg`,
+  }))
+  const link = 'https://www.themoviedb.org/movie/1/watch?locale=ES'
+  const tmdb = new Tmdb('test', async () =>
+    Response.json({
+      results: { ES: { link, flatrate: providers, rent: [providers[0], providers[1]] } },
+    }),
+  )
+  const result = await tmdb.watchProviders(1)
+  assert.ok(result)
+  assert.equal(result.link, link)
+  assert.deepEqual(
+    result.flatrate.map((provider) => provider.provider_name),
+    [
+      'Netflix',
+      'Amazon Prime Video',
+      'Movistar Plus+',
+      'Filmin',
+      'Disney Plus',
+      'HBO Max',
+      'Paramount Plus',
+      'MUBI',
+      'Acontra Plus',
+      'Apple TV',
+      'Indie Platform',
+    ],
+  )
+  assert.deepEqual(result.flatrate[0], providers[0])
+  assert.deepEqual(result.rent, [providers[0]])
+  const plansOnly = new Tmdb('test', async () =>
+    Response.json({
+      results: { ES: { link, flatrate: [providers[1]] } },
+    }),
+  )
+  assert.deepEqual((await plansOnly.watchProviders(1))?.flatrate, [
+    {
+      ...providers[1],
+      provider_name: 'Netflix',
+    },
+  ])
+})
+
 test('missing Spanish availability does not fall back to another country', async () => {
   const tmdb = new Tmdb('test', async () => Response.json({ id: 1, results: { US: {} } }))
   assert.equal(await tmdb.watchProviders(1), null)
