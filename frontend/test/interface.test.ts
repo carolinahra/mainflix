@@ -6,7 +6,7 @@ import { I18n } from '../src/i18n.js'
 import type { Container } from '../src/container.js'
 import { ApiException } from '../src/api.js'
 
-test('movie discovery exposes nomination and favorites rather than manual imports', () => {
+test('movie discovery exposes watched, nomination and favorites rather than manual imports', () => {
   Object.defineProperty(globalThis, 'location', { value: { hash: '' }, configurable: true })
   const container = { i18n: new I18n('en') }
   const app = new Mainflix({ container: container as Container })
@@ -50,6 +50,8 @@ test('movie discovery exposes nomination and favorites rather than manual import
       assert.ok(markup.includes(favorite))
       assert.ok(!markup.includes(imported))
     }
+    const detail = renderToStaticMarkup(app['renderDetail']())
+    assert.ok(detail.includes(language === 'en' ? 'I&#x27;ve watched it' : 'Ya la he visto'))
     app.state.round.status = 'ready'
     for (const node of [app['renderRemoteCard'](movie), app['renderDetail']()]) {
       const markup = renderToStaticMarkup(node)
@@ -58,6 +60,11 @@ test('movie discovery exposes nomination and favorites rather than manual import
       assert.ok(markup.includes(favorite))
     }
     assert.ok(!renderToStaticMarkup(app['renderSearch']()).includes(missing))
+    assert.ok(
+      renderToStaticMarkup(app['renderDetail']()).includes(
+        language === 'en' ? 'I&#x27;ve watched it' : 'Ya la he visto',
+      ),
+    )
   }
 })
 

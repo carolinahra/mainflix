@@ -18,6 +18,7 @@ export class MovieController {
     this.router.get('/to-review', this.toReview.bind(this))
     this.router.get('/favorites', this.favorites.bind(this))
     this.router.post('/favorites', this.favoriteTmdb.bind(this))
+    this.router.post('/watched', this.watchedTmdb.bind(this))
     this.router.get('/providers/:tmdbId', this.tmdbWatchProviders.bind(this))
     this.router.get('/:id', this.detail.bind(this))
     this.router.get('/:id/providers', this.watchProviders.bind(this))
@@ -118,6 +119,15 @@ export class MovieController {
       req.method === 'PUT',
     )
     res.sendStatus(204)
+  }
+  private async watchedTmdb(req: HttpRequest, res: HttpResponse): Promise<void> {
+    const body = z
+      .object({ tmdbId: z.number().int().positive().max(2147483647) })
+      .strict()
+      .parse(req.body)
+    const movie = await this.movies.submit(Http.user(res).id, body, Http.language(req))
+    await this.reviews.markWatched(Http.user(res).id, movie.id)
+    res.json(movie)
   }
   private async review(req: HttpRequest, res: HttpResponse): Promise<void> {
     const body = z

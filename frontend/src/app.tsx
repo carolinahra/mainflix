@@ -1652,19 +1652,30 @@ export class Mainflix extends Component<Props, State> {
     })
   }
   private watched(watched: boolean): void {
-    const id: number | undefined = this.state.detail?.movie.id
-    if (!id) return
+    let id: number | undefined = this.state.detail?.movie.id
+    const tmdbId = this.state.remoteDetail?.tmdb_id
+    if (!id && (!tmdbId || !watched)) return
     void this.perform(async (): Promise<void> => {
-      await this.props.container.api.request(
-        `/movies/${id}/watched`,
-        watched ? 'PUT' : 'DELETE',
-        {},
-      )
+      if (id) {
+        await this.props.container.api.request(
+          `/movies/${id}/watched`,
+          watched ? 'PUT' : 'DELETE',
+          {},
+        )
+      } else {
+        const movie = await this.props.container.api.request<Movie>(
+          `/movies/watched?language=${this.state.language}`,
+          'POST',
+          { tmdbId },
+        )
+        id = movie.id
+      }
       const detail = await this.props.container.api.request<Detail>(
         `/movies/${id}?language=${this.state.language}`,
       )
       this.setState((state) => ({
         detail,
+        remoteDetail: null,
         unmarkingWatched: false,
         editingReview: false,
         myReviews: watched
@@ -3042,34 +3053,35 @@ export class Mainflix extends Component<Props, State> {
         <div className="cinema-body">
           <div className="cinema-info">
             <div className="cinema-actions">
-              {detail && (seen || detail.movie.approval_status === 'approved') && (
-                <button
-                  className="primary"
-                  aria-label={this.t(seen ? 'unmarkWatched' : 'watched')}
-                  aria-pressed={seen}
-                  disabled={this.state.busy}
-                  onClick={() => {
-                    if (seen && mine) this.setState({ unmarkingWatched: true })
-                    else this.watched(!seen)
-                  }}
-                >
-                  {seen && (
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      aria-hidden="true"
-                    >
-                      <path d="m5 12 4 4L19 6" />
-                    </svg>
-                  )}
-                  {this.t(seen ? 'watchedStatus' : 'watched')}
-                </button>
-              )}
+              <button
+                className="primary"
+                aria-label={this.t(seen ? 'unmarkWatched' : 'watched')}
+                aria-pressed={seen}
+                disabled={
+                  this.state.busy ||
+                  Boolean(detail && !seen && detail.movie.approval_status !== 'approved')
+                }
+                onClick={() => {
+                  if (seen && mine) this.setState({ unmarkingWatched: true })
+                  else this.watched(!seen)
+                }}
+              >
+                {seen && (
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    aria-hidden="true"
+                  >
+                    <path d="m5 12 4 4L19 6" />
+                  </svg>
+                )}
+                {this.t(seen ? 'watchedStatus' : 'watched')}
+              </button>
               {canNominate && (
                 <button
-                  className={detail ? 'secondary' : 'primary'}
+                  className="secondary"
                   disabled={this.state.busy}
                   aria-pressed={nominated}
                   onClick={() =>

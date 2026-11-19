@@ -101,6 +101,67 @@ test('only the app administrator can maintain movies while group owners can nomi
     .expect(200)
 })
 
+test('members can mark a discovered movie watched without favoriting or nominating it', async () => {
+  const f = new HttpFixture()
+  const user = await f.container.userService.create(null, 'watcher', 'Viewer', 'abcdef')
+  f.container.tmdb = new Tmdb('test', async (input) => {
+    const url = new URL(String(input))
+    assert.equal(url.pathname, '/3/movie/42')
+    assert.equal(url.searchParams.get('language'), 'es-ES')
+    return Response.json({ id: 42, title: 'Discovered movie', overview: 'Una historia.' })
+  })
+  const app = f.container.application.app
+  await request(app)
+    .post('/api/movies/watched')
+    .set('Origin', 'http://localhost:5173')
+    .send({ tmdbId: 42 })
+    .expect(401)
+  const cookie = await f.login('watcher', 'abcdef')
+  const watch = (body: object) =>
+    request(app)
+      .post('/api/movies/watched?language=es')
+      .set('Cookie', cookie)
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+  await watch({ tmdbId: 0 }).expect(400)
+  await watch({ tmdbId: 42, title: 'Manual title' }).expect(400)
+  const [first, second] = await Promise.all([
+    watch({ tmdbId: 42 }).expect(200),
+    watch({ tmdbId: 42 }).expect(200),
+  ])
+  assert.equal(first.body.id, second.body.id)
+  assert.equal(first.body.overview, 'Una historia.')
+  const stored = await TestDatabase.database.client
+    .selectFrom('movies')
+    .select(['id', 'eligible'])
+    .execute()
+  assert.deepEqual(stored, [{ id: first.body.id, eligible: true }])
+  const watched = await TestDatabase.database.client
+    .selectFrom('user_watched_movies')
+    .select(['user_id', 'movie_id'])
+    .execute()
+  assert.deepEqual(watched, [{ user_id: user.id, movie_id: first.body.id }])
+  assert.deepEqual(
+    await TestDatabase.database.client.selectFrom('favorite_movies').selectAll().execute(),
+    [],
+  )
+  assert.deepEqual(
+    await TestDatabase.database.client.selectFrom('round_responses').selectAll().execute(),
+    [],
+  )
+  await f.container.reviewService.markWatched(user.id, first.body.id, false)
+  await TestDatabase.database.client
+    .updateTable('movies')
+    .set({ approval_status: 'rejected' })
+    .where('id', '=', first.body.id)
+    .execute()
+  await watch({ tmdbId: 42 }).expect(404)
+  assert.deepEqual(
+    await TestDatabase.database.client.selectFrom('user_watched_movies').selectAll().execute(),
+    [],
+  )
+})
+
 test('movie descriptions follow the requested language without overwriting the catalogue synopsis', async () => {
   const f = new HttpFixture()
   await f.container.userService.create(null, 'synopsis', 'Viewer', 'abcdef', true)

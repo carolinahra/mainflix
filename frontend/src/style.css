@@ -16,6 +16,14 @@
 body {
   margin: 0;
 }
+html:has(dialog:modal),
+body:has(dialog:modal) {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+dialog:modal {
+  overscroll-behavior: contain;
+}
 button,
 input,
 select,
