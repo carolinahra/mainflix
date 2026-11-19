@@ -1631,6 +1631,9 @@ dialog small {
     flex-wrap: wrap;
     gap: 16px;
   }
+  .profile-identity-copy {
+    flex-basis: max-content;
+  }
   .profile-portrait {
     width: 78px;
     height: 78px;
