@@ -247,6 +247,81 @@ for (const engine of [chromium, webkit])
 
 for (const engine of [chromium, webkit])
   test(
+    `movie dialog keeps the background still while discovery loads in ${engine.name()}`,
+    { timeout: 60_000 },
+    async () => {
+      const f = new BrowserFixture()
+      let release!: () => void
+      const delayed = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      try {
+        await f.prepare(engine)
+        const page = await f.page()
+        await page.route('**/api/movies/browse?**', async (route) => {
+          const popular = new URL(route.request().url()).searchParams.get('category') === 'popular'
+          if (popular) await delayed
+          await route.fulfill({
+            json: {
+              local: [],
+              remote: popular
+                ? [
+                    {
+                      tmdb_id: 99999,
+                      title: 'Late discovery result',
+                      release_year: 2026,
+                      overview: '',
+                      poster_path: null,
+                    },
+                  ]
+                : [],
+              remoteError: null,
+              page: 1,
+              totalPages: 1,
+            },
+          })
+        })
+        await f.login(page, 'friend1')
+        const title = page
+          .locator('#movie-catalogue')
+          .getByRole('button', { name: 'Smoke Film A', exact: true })
+        await title.scrollIntoViewIfNeeded()
+        await title.click()
+        const dialog = page.getByRole('dialog', { name: 'Smoke Film A', exact: true })
+        await dialog.waitFor()
+        const backgroundY = await page.evaluate(() => scrollY)
+        assert.ok(backgroundY > 0, 'The background starts scrolled down')
+        release()
+        await page.getByRole('heading', { name: 'Late discovery result', exact: true }).waitFor()
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+            ),
+        )
+        assert.equal(
+          await page.evaluate(() => scrollY),
+          backgroundY,
+          'Late discovery content must not move the background behind a modal',
+        )
+        await dialog.getByRole('button', { name: 'Close ×', exact: true }).click()
+        assert.equal(
+          await page.evaluate(() => scrollY),
+          backgroundY,
+          'Closing the dialog preserves the background position',
+        )
+        await page.mouse.move(2, 400)
+        await page.mouse.wheel(0, 300)
+        await page.waitForFunction((y) => scrollY > y, backgroundY)
+      } finally {
+        release()
+        await f.close()
+      }
+    },
+  )
+
+for (const engine of [chromium, webkit])
+  test(
     `desktop window resizing keeps movie reviews and account controls usable in ${engine.name()}`,
     { timeout: 90_000 },
     async () => {

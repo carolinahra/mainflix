@@ -20,6 +20,7 @@ html:has(dialog:modal),
 body:has(dialog:modal) {
   overflow: hidden;
   overscroll-behavior: none;
+  overflow-anchor: none;
 }
 dialog:modal {
   overscroll-behavior: contain;
