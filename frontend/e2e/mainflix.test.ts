@@ -246,6 +246,112 @@ for (const engine of [chromium, webkit])
   })
 
 for (const engine of [chromium, webkit])
+  test(
+    `desktop window resizing keeps movie reviews and account controls usable in ${engine.name()}`,
+    { timeout: 90_000 },
+    async () => {
+      const f = new BrowserFixture()
+      try {
+        await f.prepare(engine)
+        const viewer = await f.database.client
+          .selectFrom('users')
+          .select('id')
+          .where('username', '=', 'friend1')
+          .executeTakeFirstOrThrow()
+        const movie = await f.database.client
+          .selectFrom('movies')
+          .select('id')
+          .where('title', '=', 'Smoke Film A')
+          .executeTakeFirstOrThrow()
+        await f.container.reviewService.markWatched(viewer.id, movie.id)
+        await f.container.reviewService.save(
+          viewer.id,
+          movie.id,
+          4.5,
+          'My saved review survives resizing.',
+        )
+        const page = await f.page()
+        await f.login(page, 'friend1')
+        const dialog = page.getByRole('dialog')
+        const widths = [
+          1440, 1101, 1024, 901, 900, 800, 761, 700, 651, 641, 640, 440, 375, 320, 1440,
+        ]
+        for (const [language, edit] of [
+          ['en', 'Edit review'],
+          ['es', 'Editar reseña'],
+        ] as const) {
+          await page.getByLabel('Language / Idioma').selectOption(language)
+          await page
+            .locator('#movie-catalogue')
+            .getByRole('button', { name: 'Smoke Film A', exact: true })
+            .click()
+          await dialog.getByRole('button', { name: edit, exact: true }).click()
+          for (const width of widths) {
+            await page.setViewportSize({ width, height: 800 })
+            const fits = await dialog.evaluate((element) => {
+              const review = element.querySelector('.own-review')!
+              const halves = [...element.querySelectorAll('.diamond-picker label')].map((e) =>
+                e.getBoundingClientRect(),
+              )
+              const buttons = [...element.querySelectorAll('.cinema-editor-actions button')]
+              return (
+                element.scrollWidth <= element.clientWidth + 1 &&
+                review.getBoundingClientRect().width >= Math.min(300, element.clientWidth - 50) &&
+                halves.every(
+                  (rect) => Math.abs(rect.top - halves[0]!.top) < 1 && rect.width >= 17,
+                ) &&
+                buttons.every((button) => button.scrollWidth <= button.clientWidth + 1)
+              )
+            })
+            assert.equal(
+              fits,
+              true,
+              `${engine.name()} / ${language} / ${width}px: review stays readable without split diamonds or clipped controls`,
+            )
+            assert.equal(
+              await dialog.locator('textarea').inputValue(),
+              'My saved review survives resizing.',
+            )
+          }
+          await page.keyboard.press('Escape')
+        }
+        await page.getByLabel('Language / Idioma').selectOption('en')
+        await f.profile(page)
+        await page.getByRole('tab', { name: 'Account', exact: true }).click()
+        for (const width of widths) {
+          await page.setViewportSize({ width, height: 800 })
+          const panels = await page
+            .locator('.profile-account-panel')
+            .evaluateAll((elements) =>
+              elements.map((element) => ({
+                width: element.getBoundingClientRect().width,
+                top: element.getBoundingClientRect().top,
+                left: element.getBoundingClientRect().left,
+                scroll: element.scrollWidth,
+                client: element.clientWidth,
+              })),
+            )
+          assert.ok(
+            panels.every(
+              (panel) =>
+                panel.width >= Math.min(300, width - 36) && panel.scroll <= panel.client + 1,
+            ),
+            `${width}px: account panels fit`,
+          )
+          if (panels[0]!.left !== panels[1]!.left)
+            assert.equal(panels[0]!.top, panels[1]!.top, 'Side-by-side account panels align')
+          assert.equal(
+            await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+            false,
+          )
+        }
+      } finally {
+        await f.close()
+      }
+    },
+  )
+
+for (const engine of [chromium, webkit])
   test(`movie actions stay together in mobile portrait in ${engine.name()}`, { timeout: 60_000 }, async () => {
     const f = new BrowserFixture()
     try {
@@ -510,7 +616,7 @@ test(
       assert.equal(await summary.locator('img').getAttribute('src'), '/art/creeper-avatar.png')
       for (const language of ['en', 'es']) {
         await page.getByLabel('Language / Idioma').selectOption(language)
-        for (const width of [320, 375, 760, 800, 1024, 1100, 1280, 1440]) {
+        for (const width of [320, 375, 760, 761, 800, 900, 901, 1024, 1100, 1101, 1280, 1440]) {
           await page.setViewportSize({ width, height: 900 })
           const overlaps = await page.locator('header').evaluate((header) => {
             const controls = [
@@ -622,13 +728,13 @@ for (const engine of [chromium, webkit])
     },
   )
 
-test(
-  'past weekly movies stay on home until the last voter reviews them',
+for (const engine of [chromium, webkit]) test(
+  `past weekly movies leave only your home list when you review them in ${engine.name()}`,
   { timeout: 60_000 },
   async () => {
     const f = new BrowserFixture()
     try {
-      await f.prepare()
+      await f.prepare(engine)
       const users = await f.database.client.selectFrom('users').selectAll().orderBy('id').execute()
       const admin = users.find((user) => user.is_admin)!
       const voters = users.filter((user) => !user.is_admin)
@@ -652,7 +758,7 @@ test(
         .set({ eligible: false })
         .where('id', '=', movie.id)
         .execute()
-      for (const user of [admin, ...voters.slice(0, 3)]) {
+      for (const user of [admin, ...voters.slice(1, 3)]) {
         await f.container.reviewService.markWatched(user.id, movie.id)
         await f.container.reviewService.save(user.id, movie.id, 3.5, 'Already rated')
       }
@@ -666,29 +772,44 @@ test(
       await page.getByRole('button', { name: 'Mainflix', exact: true }).click()
       await section.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
       await section.screenshot({ path: '/tmp/mainflix-to-review-desktop.png' })
-      await page.setViewportSize({ width: 320, height: 568 })
-      assert.equal(
-        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
-        false,
-      )
+      for (const width of [1280, 900, 800, 640, 375, 320]) {
+        await page.setViewportSize({ width, height: 900 })
+        const card = section.locator('.to-review-card').first()
+        const box = await card.boundingBox()
+        assert.ok(box && box.height <= 230, `${width}px: pending review cards stay compact`)
+        assert.ok(box.width + 1 >= Math.min(320, width * 0.92), `${width}px: cards have room for their details`)
+        const poster = await card.locator('.poster-button').boundingBox()
+        assert.ok(poster && Math.abs(poster.width / poster.height - 2 / 3) < 0.01, 'Posters keep their proportions')
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+        if (width === 900) await section.screenshot({ path: `/tmp/mainflix-to-review-${engine.name()}-900.png` })
+      }
       await section.screenshot({ path: '/tmp/mainflix-to-review-mobile.png' })
-      const last = await f.page()
-      await f.login(last, 'friend4')
-      await last
+      const other = await f.page()
+      await f.login(other, 'friend4')
+      const otherSection = other.locator('[aria-labelledby="to-review-title"]')
+      await otherSection.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
+      await page
         .locator('[aria-labelledby="to-review-title"]')
         .getByRole('button', { name: 'Rate movie', exact: true })
         .click()
-      const dialog = last.getByRole('dialog')
+      const dialog = page.getByRole('dialog')
       await dialog.getByRole('button', { name: "I've watched it", exact: true }).click()
+      await section.waitFor()
       await dialog.getByRole('button', { name: '+ Write your review', exact: true }).click()
       await dialog.getByRole('radio', { name: '4.5/5', exact: true }).check()
       await dialog.getByRole('button', { name: 'Save review', exact: true }).click()
       await dialog.locator('.review [aria-label="4.5/5"]').waitFor()
       await dialog.getByRole('button', { name: 'Close ×', exact: true }).click()
-      await last
+      await page
         .getByRole('heading', { name: 'To be reviewed', exact: true })
         .waitFor({ state: 'hidden' })
-      await section.waitFor({ state: 'hidden', timeout: 10_000 })
+      await page.reload()
+      await page.getByRole('button', { name: 'Mainflix', exact: true }).click()
+      await page.locator('.group-toolbar').waitFor()
+      await section.waitFor({ state: 'hidden' })
+      await other.reload()
+      await other.getByRole('button', { name: 'Mainflix', exact: true }).click()
+      await otherSection.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
     } finally {
       await f.close()
     }

@@ -1520,7 +1520,11 @@ dialog small {
 .profile-account-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: start;
   gap: 32px;
+}
+.profile-account-layout .password-settings {
+  margin: 0;
 }
 .profile-account-panel {
   padding: 25px;
@@ -1719,7 +1723,6 @@ dialog small {
     margin-top: 28px;
   }
   .profile-account-layout {
-    grid-template-columns: minmax(0, 1fr);
     gap: 18px;
   }
   .profile-account-panel {
@@ -1770,6 +1773,20 @@ dialog small {
   gap: 0.5rem;
   min-width: 0;
 }
+[aria-labelledby='to-review-title'] .movie-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+}
+.to-review-card .movie-card {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: start;
+}
+.to-review-card .movie-card-body {
+  padding: 10px;
+}
+.to-review-card h3 {
+  margin-bottom: 0;
+}
 .reviewed-movie-heading {
   display: flex;
   align-items: center;
@@ -1801,6 +1818,7 @@ dialog small {
 .rating-diamond {
   position: relative;
   display: inline-block;
+  flex-shrink: 0;
   width: 24px;
   height: 24px;
 }
@@ -2386,13 +2404,20 @@ dialog small {
   margin-top: 8px;
 }
 @media (max-width: 900px) {
+  .profile-account-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cinema-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .cinema-info {
     padding-left: 25px;
     padding-right: 25px;
   }
   .cinema-reviews {
-    padding-left: 25px;
-    padding-right: 25px;
+    border-left: 0;
+    border-top: 1px solid #ffffff14;
+    padding: 24px 25px 10px;
   }
   .cinema-hero {
     padding-left: 25px;
@@ -2421,9 +2446,6 @@ dialog small {
   .movie-dialog h2 {
     font-size: 39px;
   }
-  .cinema-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .cinema-info {
     padding: 0 22px 23px;
   }
@@ -2431,8 +2453,6 @@ dialog small {
     margin: 5px 0 24px;
   }
   .cinema-reviews {
-    border-left: 0;
-    border-top: 1px solid #ffffff14;
     padding: 24px 22px 10px;
   }
   .film-eyebrow {

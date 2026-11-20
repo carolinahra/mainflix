@@ -92,7 +92,7 @@ The frontend uses one dictionary per language: `frontend/src/locales/en.json` an
 - Users nominate movies or save favorites; the app saves the required movie metadata automatically. Browsing has no manual import, add or edit controls. Movie maintenance in Administration is restricted to the app administrator, including metadata, eligibility and older pending entries. Existing rejected/excluded films stay blocked.
 - Each user can mark any approved catalogue movie personally watched, including movies seen before Mainflix; doing so does not remove eligibility. One editable review per user/movie, 0.5–5 diamonds in half-point steps and optional text. Viewing progress is required to review, and survives reselection. The Reviews tab groups everyone’s diamond ratings and text by movie, with recently reviewed movies first.
 - **Mark as unwatched** removes your personal watched mark. If you already reviewed the movie, confirmation is required before your rating and review are removed too. Other people's reviews, favorites, nominations and saved winners stay unchanged.
-- The home page’s **To be reviewed** section keeps past weekly selections visible until every voting member in that group has rated them. Observer ratings do not count toward completion; the current weekly movie keeps its existing card.
+- The home page’s **To be reviewed** section shows past weekly selections in the current group that you have not rated yet. Each member’s list is personal, including observers and later joiners; the current weekly movie keeps its existing card.
 - Friends’ ratings and review text for weekly selections stay hidden in movie details and the Reviews tab until you submit your own rating for that movie. Marking it watched alone does not unlock reviews. This also applies to past selections and observers; non-selected catalogue movies keep shared reviews.
 - Old rounds/reviews persist. No cron task is needed: the API determines the current round from server time on each request; the frontend refreshes every five seconds while visible.
 
@@ -146,7 +146,7 @@ All routes except health, login, reset, logout, invitation preview and invitatio
 | PUT | `/api/rounds/:week/response` | `{movieId:number}`, `{movieId:null}` to skip, or `{tmdbId:number}` to import and nominate atomically; optional `language=es` |
 | POST | `/api/rounds/:week/draw` | Saved shared result; `week` is `YYYY-MM-DD` |
 | GET | `/api/movies?q=title&language=es&limit=30&offset=0` | `{local,remote,remoteError}` |
-| GET | `/api/movies/to-review` | Selected weekly movies still missing a voting member’s review, most recent selection first |
+| GET | `/api/movies/to-review` | Selected weekly movies in the current group you have not reviewed, most recent selection first |
 | GET | `/api/movies/reviews?limit=30&offset=0` | Reviewed movies, newest review first; weekly selections return `reviews: []` and `reviewsLocked: true` until you review them; `mine=true` returns only your reviews |
 | GET | `/api/movies/favorites?limit=30&offset=0` | Your favorite local movies |
 | POST | `/api/movies/favorites?language=es` | `{tmdbId}` imports and favorites atomically |

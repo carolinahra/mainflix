@@ -7,7 +7,7 @@ export class ReviewRepository {
     private readonly database: Database,
     readonly groupId: number = 1,
   ) {}
-  async toReview(week: string): Promise<Movie[]> {
+  async toReview(userId: number): Promise<Movie[]> {
     return this.database.client
       .selectFrom('movies as m')
       .where('m.group_id', '=', this.groupId)
@@ -15,23 +15,14 @@ export class ReviewRepository {
       .where('round.group_id', '=', this.groupId)
       .selectAll('m')
       .where((eb) =>
-        eb.exists(
-          eb
-            .selectFrom('group_members as member')
-            .select('member.user_id')
-            .where('member.group_id', '=', this.groupId)
-            .where('member.voting_from', '<=', week)
-            .where((member) =>
-              member.not(
-                member.exists(
-                  member
-                    .selectFrom('reviews as review')
-                    .select('review.user_id')
-                    .whereRef('review.user_id', '=', 'member.user_id')
-                    .whereRef('review.movie_id', '=', 'm.id'),
-                ),
-              ),
-            ),
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('reviews as review')
+              .select('review.user_id')
+              .where('review.user_id', '=', userId)
+              .whereRef('review.movie_id', '=', 'm.id'),
+          ),
         ),
       )
       .groupBy('m.id')

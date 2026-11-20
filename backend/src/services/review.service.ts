@@ -28,7 +28,7 @@ export class ReviewService {
   async all(limit: number, offset: number, userId: number, mine = false): Promise<ReviewedMovie[]> {
     return this.repository.all(limit, offset, userId, mine)
   }
-  async toReview(): Promise<Movie[]> {
-    return this.repository.toReview(this.clock.weekKey())
+  async toReview(userId: number): Promise<Movie[]> {
+    return this.repository.toReview(userId)
   }
 }

@@ -85,7 +85,7 @@ export class MovieController {
     res.json(await this.reviews.all(limit, offset, Http.user(res).id, mine))
   }
   private async toReview(_req: HttpRequest, res: HttpResponse): Promise<void> {
-    res.json(await this.reviews.toReview())
+    res.json(await this.reviews.toReview(Http.user(res).id))
   }
   private async favorites(req: HttpRequest, res: HttpResponse): Promise<void> {
     const { limit, offset } = Http.pagination.parse(req.query)

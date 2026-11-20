@@ -332,7 +332,7 @@ test('weekly reviews stay hidden in details and shared lists until the viewer su
     )
 })
 
-test('previous weekly selections stay to be reviewed until every voter rates them', async () => {
+test('weekly selections to review are personal and marking watched alone does not complete them', async () => {
   const f = new HttpFixture()
   const app = f.container.application.app
   const admin = await f.container.userService.create(null, 'reviewqueue', 'Admin', 'abcdef', true)
@@ -350,7 +350,7 @@ test('previous weekly selections stay to be reviewed until every voter rates the
       [week, movie.id, admin.id],
     )
   }
-  for (const user of [admin, ...voters.slice(0, 3)]) {
+  for (const user of voters.slice(0, 3)) {
     await f.container.reviewService.markWatched(user.id, pending.id)
     await f.container.reviewService.save(user.id, pending.id, 4, '')
   }
@@ -358,21 +358,42 @@ test('previous weekly selections stay to be reviewed until every voter rates the
     await f.container.reviewService.markWatched(user.id, completed.id)
     await f.container.reviewService.save(user.id, completed.id, 4, '')
   }
+  await f.container.reviewService.markWatched(admin.id, pending.id)
   await request(app).get('/api/movies/to-review').expect(401)
   const cookie = await f.login('reviewqueue', 'abcdef')
   const list = () => request(app).get('/api/movies/to-review').set('Cookie', cookie).expect(200)
   assert.deepEqual(
     (await list()).body.map((movie: { id: number }) => movie.id),
-    [pending.id],
+    [pending.id, completed.id],
   )
   await f.container.roundService.current()
   assert.deepEqual(
     (await list()).body.map((movie: { id: number }) => movie.id),
+    [pending.id, completed.id],
+  )
+  await request(app)
+    .put(`/api/movies/${pending.id}/review`)
+    .set('Cookie', cookie)
+    .set('Origin', f.container.config.origin)
+    .send({ rating: 0.5, text: '' })
+    .expect(204)
+  assert.deepEqual(
+    (await list()).body.map((movie: { id: number }) => movie.id),
+    [completed.id],
+  )
+  assert.deepEqual(
+    (await f.container.reviewService.toReview(voters[3]!.id)).map((movie) => movie.id),
     [pending.id],
   )
-  await f.container.reviewService.markWatched(voters[3]!.id, pending.id)
-  await f.container.reviewService.save(voters[3]!.id, pending.id, 0.5, '')
+  assert.deepEqual(await f.container.reviewService.toReview(voters[0]!.id), [])
+  await f.container.reviewService.markWatched(admin.id, completed.id)
+  await f.container.reviewService.save(admin.id, completed.id, 4, '')
   assert.deepEqual((await list()).body, [])
+  await f.container.reviewService.markWatched(admin.id, pending.id, false)
+  assert.deepEqual(
+    (await list()).body.map((movie: { id: number }) => movie.id),
+    [pending.id],
+  )
 })
 
 test('unmarking a watched movie removes only the callers review and watching record', async () => {

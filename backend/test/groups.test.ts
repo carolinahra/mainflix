@@ -654,7 +654,7 @@ test('group migration preserves legacy credentials, sessions, movies, favorites,
   }
 })
 
-test('late joiners enter review completion checks when their voting week begins', async () => {
+test('late joiners have their own review list without changing another members completion', async () => {
   const f = new GroupsFixture()
   const { cookie, group } = await f.owner()
   const movie = await f.container
@@ -679,9 +679,20 @@ test('late joiners enter review completion checks when their voting week begins'
       password: 'abcdef',
     })
     .expect(201)
+  const lateCookie = await f.login('late_reviewer')
   assert.deepEqual((await f.call('get', '/movies/to-review', cookie, group.id)).body, [])
+  assert.equal(
+    (await f.call('get', '/movies/to-review', lateCookie, group.id)).body[0].id,
+    movie.id,
+  )
+  assert.deepEqual((await f.call('get', '/movies/to-review', cookie, 1).expect(200)).body, [])
+  await f.call('get', '/movies/to-review', lateCookie, 1).expect(403)
   f.now = new Date('2026-11-23T12:00Z')
-  assert.equal((await f.call('get', '/movies/to-review', cookie, group.id)).body[0].id, movie.id)
+  assert.deepEqual((await f.call('get', '/movies/to-review', cookie, group.id)).body, [])
+  assert.equal(
+    (await f.call('get', '/movies/to-review', lateCookie, group.id)).body[0].id,
+    movie.id,
+  )
 })
 
 test('the same TMDB film can be independently eligible and selected in different groups', async () => {
