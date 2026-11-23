@@ -67,6 +67,7 @@ export interface MovieWatchProviders {
   rent: WatchProvider[]
 }
 export type Language = 'en' | 'es'
+export type MovieFilter = 'pending' | 'watched'
 export interface MovieSearch {
   local: Movie[]
   remote: MovieMetadata[]

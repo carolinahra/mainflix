@@ -145,7 +145,7 @@ All routes except health, login, reset, logout, invitation preview and invitatio
 | GET | `/api/rounds?limit=30&offset=0` | Round history |
 | PUT | `/api/rounds/:week/response` | `{movieId:number}`, `{movieId:null}` to skip, or `{tmdbId:number}` to import and nominate atomically; optional `language=es` |
 | POST | `/api/rounds/:week/draw` | Saved shared result; `week` is `YYYY-MM-DD` |
-| GET | `/api/movies?q=title&language=es&limit=30&offset=0` | `{local,remote,remoteError}` |
+| GET | `/api/movies?q=title&language=es&limit=30&offset=0` | `{local,remote,remoteError}`. Optional `filter=watched` returns your watched films in the current group, and `filter=pending` returns the group's weekly selections you haven't marked as watched. |
 | GET | `/api/movies/to-review` | Selected weekly movies in the current group you have not reviewed, most recent selection first |
 | GET | `/api/movies/reviews?limit=30&offset=0` | Reviewed movies, newest review first; weekly selections return `reviews: []` and `reviewsLocked: true` until you review them; `mine=true` returns only your reviews |
 | GET | `/api/movies/favorites?limit=30&offset=0` | Your favorite local movies |

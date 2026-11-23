@@ -446,6 +446,15 @@ for (const engine of [chromium, webkit])
       const watchedMovie = await f.database.client.updateTable('movies').set({ tmdb_id: 99001 })
         .where('title', '=', 'Smoke Film A').returningAll().executeTakeFirstOrThrow()
       await f.container.reviewService.markWatched(viewer.id, watchedMovie.id)
+      const [personal, weekly] = await f.database.client.insertInto('movies').values([
+        { title: 'Personal watch outside discovery', approval_status: 'approved' },
+        { title: 'Past weekly selection', approval_status: 'approved', eligible: false },
+      ]).returningAll().execute()
+      assert.ok(personal && weekly)
+      await f.container.reviewService.markWatched(viewer.id, personal.id)
+      await f.database.client.insertInto('rounds').values({
+        week_start: '2020-01-06', winner_id: weekly.id, drawn_by: viewer.id, drawn_at: new Date(),
+      }).execute()
       const reviewers = await f.database.client.selectFrom('users').select(['id', 'name'])
         .where('username', 'in', ['friend2', 'friend3']).execute()
       for (const reviewer of reviewers) {
@@ -515,11 +524,20 @@ for (const engine of [chromium, webkit])
       }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
       await page.getByRole('button', { name: 'Watched', exact: true }).tap()
-      assert.equal(await page.locator('.catalogue-grid .movie-card').count(), 1)
+      await page.getByRole('heading', { name: personal.title, exact: true }).waitFor()
+      assert.equal(await page.locator('.catalogue-grid .movie-card').count(), 2)
       await card.getByRole('heading', { name: 'Smoke Film A', exact: true }).waitFor()
-      await page.getByRole('button', { name: 'Unwatched', exact: true }).tap()
+      await page.getByRole('button', { name: 'Pending', exact: true }).tap()
+      await page.getByRole('heading', { name: weekly.title, exact: true }).waitFor()
       assert.equal(await page.locator('.catalogue-grid .movie-card').count(), 1)
       assert.equal(await card.count(), 0)
+      await page.getByRole('button', { name: weekly.title, exact: true }).tap()
+      const weeklyDetail = page.getByRole('dialog', { name: weekly.title, exact: true })
+      await weeklyDetail.getByRole('button', { name: "I've watched it", exact: true }).tap()
+      await page.locator('.catalogue-grid .movie-card').waitFor({ state: 'hidden' })
+      await weeklyDetail.getByRole('button', { name: 'Close ×', exact: true }).tap()
+      await page.getByRole('button', { name: 'Watched', exact: true }).tap()
+      await page.getByRole('heading', { name: weekly.title, exact: true }).waitFor()
       await page.getByRole('button', { name: 'All', exact: true }).tap()
       await page.getByRole('button', { name: 'Categories', exact: true }).tap()
       const categories = page.getByRole('dialog', { name: 'Categories', exact: true })

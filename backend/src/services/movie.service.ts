@@ -10,6 +10,7 @@ import type {
   MovieInput,
   MoviePatch,
   MovieMetadata,
+  MovieFilter,
   MovieSearch,
   Language,
   MovieCategory,
@@ -72,8 +73,8 @@ export class MovieService {
     offset: number,
     userId?: number,
     includeCatalogue = true,
+    filter?: MovieFilter,
   ): Promise<MovieSearch> {
-    const local = includeCatalogue ? await this.repository.search(query, limit, offset) : []
     const [watched, favorites] =
       userId === undefined
         ? [[], []]
@@ -81,6 +82,14 @@ export class MovieService {
             this.repository.watchedIds(userId),
             this.repository.favoriteIds(userId),
           ])
+    if (filter) {
+      const local =
+        userId === undefined
+          ? []
+          : await this.repository.search(query, limit, offset, { userId, filter })
+      return { local, remote: [], remoteError: null, watched, favorites }
+    }
+    const local = includeCatalogue ? await this.repository.search(query, limit, offset) : []
     if (!query) return { local, remote: [], remoteError: null, watched, favorites }
     try {
       const remote: MovieMetadata[] = await this.tmdb.search(query, language)

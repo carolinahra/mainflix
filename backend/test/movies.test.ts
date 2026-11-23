@@ -27,19 +27,27 @@ class Upstream {
   }
 }
 
-test('catalogue watched filters use only the current viewer and group, independent of pagination', async () => {
+test('catalogue filters select personal watched films and unseen weekly winners in the current group', async () => {
   const [viewer, other] = await TestDatabase.users()
   assert.ok(viewer && other)
   const mine = await TestDatabase.movie('A watched')
   const theirs = await TestDatabase.movie('B watched by someone else')
+  const pending = await TestDatabase.movie('C weekly winner')
+  const alsoMine = await TestDatabase.movie('D watched and selected')
   const group = await pool.query("INSERT INTO groups(name) VALUES ('Other group') RETURNING id")
   const elsewhere = await pool.query(
     'INSERT INTO movies(group_id,title) VALUES($1,$2) RETURNING id',
     [group.rows[0].id, 'Elsewhere'],
   )
   await pool.query(
-    'INSERT INTO user_watched_movies(user_id,movie_id) VALUES($1,$2),($3,$4),($1,$5)',
-    [viewer.id, mine.id, other.id, theirs.id, elsewhere.rows[0].id],
+    'INSERT INTO user_watched_movies(user_id,movie_id) VALUES($1,$2),($3,$4),($1,$5),($3,$6),($1,$7)',
+    [viewer.id, mine.id, other.id, theirs.id, elsewhere.rows[0].id, pending.id, alsoMine.id],
+  )
+  await pool.query(
+    `INSERT INTO rounds(group_id,week_start,winner_id,drawn_by,drawn_at) VALUES
+    (1,'2026-10-26',$1,$2,now()),(1,'2026-11-02',$1,$2,now()),
+    (1,'2026-11-09',$3,$2,now()),($4,'2026-11-09',$5,$2,now())`,
+    [pending.id, viewer.id, alsoMine.id, group.rows[0].id, elsewhere.rows[0].id],
   )
   await pool.query('INSERT INTO favorite_movies(user_id,movie_id) VALUES($1,$2),($3,$4),($1,$5)', [
     viewer.id,
@@ -60,10 +68,30 @@ test('catalogue watched filters use only the current viewer and group, independe
     result.local.map((movie) => movie.id),
     [theirs.id],
   )
-  assert.deepEqual(result.watched, [mine.id])
+  assert.deepEqual(result.watched, [mine.id, alsoMine.id])
   assert.deepEqual(result.favorites, [mine.id])
-  assert.deepEqual((await movies.search('', 'en', 30, 0, other.id)).watched, [theirs.id])
+  assert.deepEqual((await movies.search('', 'en', 30, 0, other.id)).watched, [
+    theirs.id,
+    pending.id,
+  ])
   assert.deepEqual((await movies.search('', 'en', 30, 0, other.id)).favorites, [theirs.id])
+  const watched = await movies.search('watched', 'en', 1, 1, viewer.id, false, 'watched')
+  assert.deepEqual(
+    watched.local.map((movie) => movie.id),
+    [alsoMine.id],
+  )
+  assert.deepEqual(watched.remote, [])
+  assert.equal(watched.remoteError, null)
+  const queue = await movies.search('', 'en', 30, 0, viewer.id, false, 'pending')
+  assert.deepEqual(
+    queue.local.map((movie) => movie.id),
+    [pending.id],
+  )
+  const otherQueue = await movies.search('', 'en', 30, 0, other.id, false, 'pending')
+  assert.deepEqual(
+    otherQueue.local.map((movie) => movie.id),
+    [alsoMine.id],
+  )
 })
 
 test('discovery includes local matches so existing movies keep approval and nomination behavior', async () => {

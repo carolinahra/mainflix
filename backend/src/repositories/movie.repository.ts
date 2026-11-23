@@ -1,7 +1,7 @@
 import { sql, type ExpressionBuilder, type Insertable, type Updateable } from 'kysely'
 import type { Database } from './database.js'
 import type { Connection, Schema } from './schema.js'
-import type { Movie } from '../models/entities.js'
+import type { Movie, MovieFilter } from '../models/entities.js'
 
 export class MovieRepository {
   constructor(
@@ -105,12 +105,39 @@ export class MovieRepository {
       .where('tmdb_id', '=', id)
       .executeTakeFirst()
   }
-  async search(query: string, limit: number, offset: number): Promise<Movie[]> {
+  async search(
+    query: string,
+    limit: number,
+    offset: number,
+    view?: { userId: number; filter: MovieFilter },
+  ): Promise<Movie[]> {
     return this.database.client
       .selectFrom('movies')
       .where('group_id', '=', this.groupId)
       .selectAll()
       .where(sql<boolean>`position(lower(${query}) in lower(title)) > 0`)
+      .$if(view !== undefined, (query) =>
+        query.where((eb) => {
+          const watched = eb.exists(
+            eb
+              .selectFrom('user_watched_movies')
+              .select('movie_id')
+              .whereRef('movie_id', '=', 'movies.id')
+              .where('user_id', '=', view!.userId),
+          )
+          if (view!.filter === 'watched') return watched
+          return eb.and([
+            eb.not(watched),
+            eb.exists(
+              eb
+                .selectFrom('rounds')
+                .select('winner_id')
+                .whereRef('winner_id', '=', 'movies.id')
+                .where('group_id', '=', this.groupId),
+            ),
+          ])
+        }),
+      )
       .orderBy('title')
       .orderBy('id')
       .limit(limit)

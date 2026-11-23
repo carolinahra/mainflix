@@ -60,9 +60,20 @@ export class MovieController {
   }
   private async search(req: HttpRequest, res: HttpResponse): Promise<void> {
     const q: string = z.string().trim().max(200).default('').parse(req.query.q)
+    const filter = z.enum(['pending', 'watched']).optional().parse(req.query.filter)
     const { limit, offset } = Http.pagination.parse(req.query)
     const user = Http.user(res)
-    res.json(await this.movies.search(q, Http.language(req), limit, offset, user.id, user.is_admin))
+    res.json(
+      await this.movies.search(
+        q,
+        Http.language(req),
+        limit,
+        offset,
+        user.id,
+        user.is_admin,
+        filter,
+      ),
+    )
   }
   private async submit(req: HttpRequest, res: HttpResponse): Promise<void> {
     if (!Http.user(res).is_admin) throw new ForbiddenException()

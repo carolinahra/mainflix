@@ -7,6 +7,7 @@ import type {
   User,
   Group,
   Movie,
+  MovieFilter,
   MovieSearch,
   MovieMetadata,
   RoundView as RoundState,
@@ -54,7 +55,8 @@ interface State {
   browseLoading: Partial<Record<MovieCategory, boolean>>
   genre: MovieCategory
   catalogueCategory: MovieCategory | 'all'
-  catalogueFilter: 'all' | 'pending' | 'watched'
+  catalogueFilter: 'all' | MovieFilter
+  filteredMovies: Film[] | null
   query: string
   detail: Detail | null
   remoteDetail: MovieMetadata | null
@@ -122,6 +124,7 @@ export class Mainflix extends Component<Props, State> {
     genre: 'action',
     catalogueCategory: 'all',
     catalogueFilter: 'all',
+    filteredMovies: null,
     query: '',
     detail: null,
     remoteDetail: null,
@@ -513,6 +516,7 @@ export class Mainflix extends Component<Props, State> {
       genre: 'action',
       catalogueCategory: 'all',
       catalogueFilter: 'all',
+      filteredMovies: null,
       history: [],
       reviewed: [],
       myReviews: [],
@@ -850,21 +854,25 @@ export class Mainflix extends Component<Props, State> {
   }
   private navigate(tab: Tab): void {
     this.profileMenu.current?.removeAttribute('open')
-    this.setState({ tab, profileSection: 'overview', error: null, message: null }, () =>
-      window.scrollTo(0, 0),
-    )
+    this.setState({ tab, profileSection: 'overview', error: null, message: null }, () => {
+      window.scrollTo(0, 0)
+      if (tab === 'catalogue' || tab === 'week' || (tab === 'admin' && this.state.user?.is_admin))
+        void this.search(this.state.query)
+    })
     if (tab === 'week') void this.refreshRound()
     if (tab === 'history') void this.loadHistory(false)
     if (tab === 'reviews') void this.loadReviews(false)
     if (tab === 'profile') void this.loadProfile()
     if (tab === 'favorites') void this.loadFavorites(false)
     if (tab === 'admin') void this.loadAdmin()
-    if (tab === 'catalogue' || tab === 'week' || (tab === 'admin' && this.state.user?.is_admin))
-      void this.search(this.state.query)
   }
   private searchChanged(event: ChangeEvent<HTMLInputElement>): void {
     const query: string = event.target.value
-    this.setState({ query })
+    this.setState((state) => ({
+      query,
+      filteredMovies:
+        state.tab === 'catalogue' && state.catalogueFilter !== 'all' ? null : state.filteredMovies,
+    }))
     clearTimeout(this.debounce)
     this.searchController?.abort()
     this.debounce = setTimeout((): void => {
@@ -872,24 +880,40 @@ export class Mainflix extends Component<Props, State> {
     }, 300)
   }
   private async search(query: string, more: boolean = false): Promise<void> {
+    clearTimeout(this.debounce)
     this.searchController?.abort()
     const controller: AbortController = new AbortController()
     this.searchController = controller
+    const filter = this.state.tab === 'catalogue' ? this.state.catalogueFilter : 'all'
+    const personal = filter !== 'all'
     try {
-      const offset: number = more ? this.state.search.local.length : 0
+      const previous = personal ? (this.state.filteredMovies ?? []) : this.state.search.local
+      const params = new URLSearchParams({
+        q: query,
+        language: this.state.language,
+        limit: '30',
+        offset: String(more ? previous.length : 0),
+      })
+      if (personal) params.set('filter', filter)
       const result: Serialized<MovieSearch> = await this.props.container.api.request(
-        `/movies?q=${encodeURIComponent(query)}&language=${this.state.language}&limit=30&offset=${offset}`,
+        `/movies?${params}`,
         'GET',
         undefined,
         controller.signal,
       )
       if (controller.signal.aborted) return
-      this.setState((state) => ({
-        search: more ? { ...result, local: [...state.search.local, ...result.local] } : result,
-      }))
+      const local = more ? [...previous, ...result.local] : result.local
+      if (personal)
+        this.setState((state) => ({
+          filteredMovies: local,
+          search: { ...state.search, favorites: result.favorites },
+        }))
+      else this.setState({ search: { ...result, local } })
     } catch (error: unknown) {
-      if (!controller.signal.aborted)
+      if (!controller.signal.aborted) {
+        if (personal) this.setState((state) => ({ filteredMovies: state.filteredMovies ?? [] }))
         this.showError(error instanceof ApiException ? error.code : 'genericError')
+      }
     }
   }
   private loadDiscovery(): void {
@@ -2114,6 +2138,12 @@ export class Mainflix extends Component<Props, State> {
   }
   private renderCatalogue(): ReactNode {
     const { catalogueCategory: category, catalogueFilter: filter } = this.state
+    const personal = filter !== 'all'
+    const filterLabels = {
+      all: 'allMovies',
+      pending: 'unwatchedMovies',
+      watched: 'watchedMovies',
+    } as const
     const categories: MovieCategory[] = [
       'popular',
       'featured',
@@ -2133,7 +2163,9 @@ export class Mainflix extends Component<Props, State> {
       'romance',
     ]
     const selectCategory = (category: MovieCategory | 'all'): void => {
-      this.setState({ catalogueCategory: category })
+      this.setState({ catalogueCategory: category, catalogueFilter: 'all' }, () => {
+        if (personal && category === 'all') void this.search(this.state.query)
+      })
       this.catalogueDialog.current?.close()
       if (category !== 'all' && !this.state.browse[category]) void this.loadBrowse(category)
     }
@@ -2141,7 +2173,7 @@ export class Mainflix extends Component<Props, State> {
       <>
         <button
           className="category-button"
-          aria-current={category === 'all' ? 'true' : undefined}
+          aria-current={!personal && category === 'all' ? 'true' : undefined}
           onClick={() => selectCategory('all')}
         >
           <span className="category-symbol" aria-hidden="true">
@@ -2156,7 +2188,7 @@ export class Mainflix extends Component<Props, State> {
             )}
             <button
               className="category-button"
-              aria-current={category === entry ? 'true' : undefined}
+              aria-current={!personal && category === entry ? 'true' : undefined}
               onClick={() => selectCategory(entry)}
             >
               <span className="category-symbol" aria-hidden="true">
@@ -2171,8 +2203,8 @@ export class Mainflix extends Component<Props, State> {
     const useSearch = category === 'all' && (this.state.user?.is_admin || this.state.query.trim())
     const browseCategory = category === 'all' ? 'popular' : category
     const browse = this.state.browse[browseCategory]
-    const result = useSearch ? this.state.search : browse
-    const local = result?.local ?? []
+    const result = personal ? undefined : useSearch ? this.state.search : browse
+    const local = (personal ? this.state.filteredMovies : result?.local) ?? []
     const admin = this.state.user?.is_admin
     const remote = (result?.remote ?? []).flatMap((movie) => {
       const match = local.find((entry) => entry.tmdb_id === movie.tmdb_id)
@@ -2183,18 +2215,18 @@ export class Mainflix extends Component<Props, State> {
       .normalize('NFD')
       .replace(/\p{Diacritic}/gu, '')
       .toLowerCase()
-    const movies = [...(admin ? local : []), ...remote].filter((movie) => {
-      const watched = 'id' in movie && (this.state.search.watched ?? []).includes(movie.id)
-      return (
-        (filter === 'all' || (filter === 'watched') === watched) &&
-        movie.title
-          .normalize('NFD')
-          .replace(/\p{Diacritic}/gu, '')
-          .toLowerCase()
-          .includes(query)
-      )
-    })
-    const loading = !useSearch && this.state.browseLoading[browseCategory]
+    const movies = personal
+      ? local
+      : [...(admin ? local : []), ...remote].filter((movie) =>
+          movie.title
+            .normalize('NFD')
+            .replace(/\p{Diacritic}/gu, '')
+            .toLowerCase()
+            .includes(query),
+        )
+    const loading = personal
+      ? this.state.filteredMovies === null
+      : !useSearch && this.state.browseLoading[browseCategory]
     return (
       <section className="catalogue-layout" aria-labelledby="catalogue-title">
         <aside className="catalogue-sidebar" aria-label={this.t('categories')}>
@@ -2205,8 +2237,12 @@ export class Mainflix extends Component<Props, State> {
           <p className="catalogue-kicker">{this.t('catalogueEyebrow')}</p>
           <div className="catalogue-heading">
             <div>
-              <h1 id="catalogue-title">{this.t(category === 'all' ? 'catalogueAll' : category)}</h1>
-              <p>{this.t('catalogueDescription')}</p>
+              <h1 id="catalogue-title">
+                {this.t(
+                  personal ? filterLabels[filter] : category === 'all' ? 'catalogueAll' : category,
+                )}
+              </h1>
+              {!personal && <p>{this.t('catalogueDescription')}</p>}
             </div>
             <label className="catalogue-search">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2239,15 +2275,14 @@ export class Mainflix extends Component<Props, State> {
                 <button
                   key={value}
                   aria-pressed={filter === value}
-                  onClick={() => this.setState({ catalogueFilter: value })}
+                  onClick={() => {
+                    if (value !== filter)
+                      this.setState({ catalogueFilter: value, filteredMovies: null }, () => {
+                        void this.search(this.state.query)
+                      })
+                  }}
                 >
-                  {this.t(
-                    value === 'all'
-                      ? 'allMovies'
-                      : value === 'pending'
-                        ? 'unwatchedMovies'
-                        : 'watchedMovies',
-                  )}
+                  {this.t(filterLabels[value])}
                 </button>
               ))}
             </div>
@@ -2278,11 +2313,13 @@ export class Mainflix extends Component<Props, State> {
             {!movies.length && !loading && (
               <div className="catalogue-empty">
                 <h2>{this.t('noMovies')}</h2>
-                <p>{this.t('catalogueEmpty')}</p>
+                {!personal && <p>{this.t('catalogueEmpty')}</p>}
                 <button
                   onClick={() => {
-                    this.setState({ catalogueCategory: 'all', catalogueFilter: 'all', query: '' })
-                    void this.search('')
+                    this.setState(
+                      { catalogueCategory: 'all', catalogueFilter: 'all', query: '' },
+                      () => void this.search(''),
+                    )
                   }}
                 >
                   {this.t('catalogueReset')}
@@ -2290,8 +2327,8 @@ export class Mainflix extends Component<Props, State> {
               </div>
             )}
           </div>
-          {useSearch
-            ? this.state.search.local.length >= 30 && (
+          {personal || useSearch
+            ? local.length >= 30 && (
                 <button
                   disabled={this.state.busy}
                   onClick={() => void this.search(this.state.query, true)}
