@@ -195,6 +195,7 @@ export class RoundService {
     movieId: number | null,
     tmdbId?: number,
     language: Language = 'en',
+    requireMovieAccess = false,
   ): Promise<RoundState> {
     const metadata = tmdbId === undefined ? undefined : await this.tmdb.details(tmdbId, language)
     return this.database.transaction(async (db) => {
@@ -220,7 +221,11 @@ export class RoundService {
         movieId = movie.id
       }
       if (movieId !== null) {
-        const movie: Movie | undefined = await this.movies.find(movieId, db)
+        const movie: Movie | undefined = await this.movies.find(
+          movieId,
+          db,
+          requireMovieAccess && !metadata ? userId : undefined,
+        )
         if (!movie?.eligible || movie.approval_status !== 'approved')
           throw new MovieNotEligibleException()
       }

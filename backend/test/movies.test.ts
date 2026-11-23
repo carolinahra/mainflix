@@ -66,35 +66,6 @@ test('catalogue watched filters use only the current viewer and group, independe
   assert.deepEqual((await movies.search('', 'en', 30, 0, other.id)).favorites, [theirs.id])
 })
 
-test('recently added orders by creation date with stable pagination even without TMDB', async () => {
-  const first = await TestDatabase.movie('Z first')
-  const latest = await TestDatabase.movie('A latest')
-  const movies = new MovieService(
-    TestDatabase.database,
-    new MovieRepository(TestDatabase.database),
-    new RoundRepository(TestDatabase.database),
-    new Tmdb(''),
-    new Clock(),
-  )
-  const result = await movies.browse('recentlyAdded', 'es', 1)
-  assert.deepEqual(
-    result.local.map((movie) => movie.id),
-    [latest.id, first.id],
-  )
-  assert.equal(result.remoteError, null)
-  assert.deepEqual(result.remote, [])
-  for (let n = 0; n < 19; n++) await TestDatabase.movie(`More film ${n}`)
-  const page1 = await movies.browse('recentlyAdded', 'es', 1)
-  const page2 = await movies.browse('recentlyAdded', 'es', 2)
-  assert.equal(page1.local.length, 20)
-  assert.equal(page1.totalPages, 2)
-  assert.deepEqual(
-    page2.local.map((movie) => movie.id),
-    [first.id],
-  )
-  assert.equal(page2.totalPages, 2)
-})
-
 test('discovery includes local matches so existing movies keep approval and nomination behavior', async () => {
   const existing = await TestDatabase.movie('Interstellar')
   await pool.query('UPDATE movies SET tmdb_id=157336 WHERE id=$1', [existing.id])

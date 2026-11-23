@@ -77,6 +77,7 @@ test('round endpoints hide other nominations and movie submitters until the surv
     result.responses.find((r: { user_id: number }) => r.user_id === users[1]!.id).movie_id,
     null,
   )
+  await f.container.movieService.favorite(users[2]!.id, b.id, true)
   result = (
     await f.call('put', `/rounds/${week}/response`, cookies[2]!, { movieId: b.id }).expect(200)
   ).body
@@ -99,10 +100,7 @@ test('round endpoints hide other nominations and movie submitters until the surv
   assert.equal(result.survey.questions[0].options, null)
   const detail = (await f.call('get', `/movies/${a.id}`, cookies[1]!).expect(200)).body
   assert.equal(detail.movie.submitted_by, null)
-  assert.equal(
-    (await f.call('get', '/movies?q=A', cookies[1]!).expect(200)).body.local[0].submitted_by,
-    null,
-  )
+  assert.deepEqual((await f.call('get', '/movies?q=A', cookies[1]!).expect(200)).body.local, [])
   const observer = (await f.call('get', '/rounds/current', cookies[3]!).expect(200)).body
   assert.equal(observer.survey.eligible, false)
   assert.ok(observer.responses.every((r: { movie_id: number | null }) => r.movie_id === null))

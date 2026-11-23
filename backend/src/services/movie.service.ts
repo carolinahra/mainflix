@@ -38,17 +38,8 @@ export class MovieService {
     page: number,
     yearFrom?: number,
     yearTo?: number,
+    viewerId?: number,
   ): Promise<MovieBrowse> {
-    if (category === 'recentlyAdded') {
-      const local = await this.repository.recentlyAdded(21, (page - 1) * 20)
-      return {
-        local: local.slice(0, 20),
-        remote: [],
-        remoteError: null,
-        page,
-        totalPages: local.length > 20 ? page + 1 : page,
-      }
-    }
     try {
       const result = await this.tmdb.browse(
         category,
@@ -58,7 +49,10 @@ export class MovieService {
         yearFrom,
         yearTo,
       )
-      const local = await this.repository.findTmdbIds(result.movies.map((movie) => movie.tmdb_id))
+      const local = await this.repository.findTmdbIds(
+        result.movies.map((movie) => movie.tmdb_id),
+        viewerId,
+      )
       return {
         local,
         remote: result.movies,
@@ -77,8 +71,9 @@ export class MovieService {
     limit: number,
     offset: number,
     userId?: number,
+    includeCatalogue = true,
   ): Promise<MovieSearch> {
-    const local: Movie[] = await this.repository.search(query, limit, offset)
+    const local = includeCatalogue ? await this.repository.search(query, limit, offset) : []
     const [watched, favorites] =
       userId === undefined
         ? [[], []]
@@ -89,14 +84,22 @@ export class MovieService {
     if (!query) return { local, remote: [], remoteError: null, watched, favorites }
     try {
       const remote: MovieMetadata[] = await this.tmdb.search(query, language)
-      return { local, remote, remoteError: null, watched, favorites }
+      const matches = includeCatalogue
+        ? local
+        : userId === undefined
+          ? []
+          : await this.repository.findTmdbIds(
+              remote.map((movie) => movie.tmdb_id),
+              userId,
+            )
+      return { local: matches, remote, remoteError: null, watched, favorites }
     } catch (error: unknown) {
       if (!(error instanceof AppException)) throw error
       return { local, remote: [], remoteError: error.code, watched, favorites }
     }
   }
-  async find(id: number, language?: Language): Promise<Movie> {
-    const movie: Movie | undefined = await this.repository.find(id)
+  async find(id: number, language?: Language, viewerId?: number): Promise<Movie> {
+    const movie: Movie | undefined = await this.repository.find(id, undefined, viewerId)
     if (!movie) throw new MovieNotFoundException()
     if (language && movie.tmdb_id) {
       try {

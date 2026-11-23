@@ -80,7 +80,6 @@ export const movieCategories = [
   'romanticComedy',
   'horror',
   'comedy',
-  'recentlyAdded',
   'newReleases',
   'popular',
   'action',

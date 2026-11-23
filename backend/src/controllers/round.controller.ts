@@ -33,6 +33,7 @@ export class RoundController {
       'movieId' in body ? body.movieId : null,
       'tmdbId' in body ? body.tmdbId : undefined,
       Http.language(req),
+      true,
     )
     res.json(await this.rounds.view(Http.user(res).id, week))
   }

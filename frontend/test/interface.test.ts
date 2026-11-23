@@ -378,18 +378,22 @@ test('unimported TMDB catalogue cards offer title and poster details without inl
     tab: 'catalogue',
     user: { id: 1, name: 'Viewer', username: 'viewer', email: null, avatar: null, is_admin: false },
     group: { id: 1, name: 'Group', is_owner: false, can_vote: true },
-    search: {
-      local: [],
-      remote: [
-        {
-          tmdb_id: 42,
-          title: 'Unimported film',
-          release_year: 2026,
-          overview: '',
-          poster_path: null,
-        },
-      ],
-      remoteError: null,
+    browse: {
+      popular: {
+        local: [],
+        remote: [
+          {
+            tmdb_id: 42,
+            title: 'Unimported film',
+            release_year: 2026,
+            overview: '',
+            poster_path: null,
+          },
+        ],
+        remoteError: null,
+        page: 1,
+        totalPages: 1,
+      },
     },
     watchProviders: {
       42: {
@@ -684,6 +688,7 @@ test('movie search explains missing TMDB configuration separately from an outage
     loading: false,
     tab: 'catalogue',
     user: { id: 1, name: 'Demo', email: null, username: 'demo', is_admin: false, avatar: null },
+    query: 'A film',
     search: { local: [], remote: [], remoteError: 'TMDB_NOT_CONFIGURED' },
   }
   for (const language of ['en', 'es'] as const) {
@@ -1004,7 +1009,7 @@ test('catalogue hearts recognize saved movies outside the first page of favorite
   const movie = {
     id: 31,
     group_id: 1,
-    tmdb_id: null,
+    tmdb_id: 42,
     title: 'Older favorite',
     release_year: 2020,
     overview: '',
@@ -1022,7 +1027,16 @@ test('catalogue hearts recognize saved movies outside the first page of favorite
     tab: 'catalogue',
     user: { id: 1, name: 'Viewer', username: 'viewer', email: null, is_admin: false, avatar: null },
     group: { id: 1, name: 'Group', is_owner: false, can_vote: true },
-    search: { local: [movie], remote: [], remoteError: null, favorites: [31] },
+    browse: {
+      popular: {
+        local: [movie],
+        remote: [movie],
+        remoteError: null,
+        page: 1,
+        totalPages: 1,
+      },
+    },
+    search: { local: [], remote: [], remoteError: null, favorites: [31] },
     favorites: [],
   }
   const markup = renderToStaticMarkup(app.render())

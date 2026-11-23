@@ -212,6 +212,8 @@ test('removing a member keeps selected nominations and reviews and finishes thei
       { title: 'Selected film', approval_status: 'approved' },
       TestDatabase.database.client,
     )
+  for (const member of [user, guest])
+    await f.container.forGroup(group.id).movieService.favorite(member.id, movie.id, true)
   await f
     .call('put', '/rounds/2026-11-16/response', cookie, group.id, { movieId: movie.id })
     .expect(200)
@@ -273,6 +275,8 @@ test('deleting a group removes only its data and invitations while keeping accou
       { title: 'Keep this film', approval_status: 'approved' },
       TestDatabase.database.client,
     )
+  await f.container.forGroup(other.id).movieService.favorite(user.id, kept.id, true)
+  await f.container.forGroup(group.id).movieService.favorite(user.id, movie.id, true)
   await f.call('put', `/movies/${kept.id}/watched`, cookie, other.id, {}).expect(204)
   await f
     .call('put', `/movies/${kept.id}/review`, cookie, other.id, {
@@ -427,7 +431,7 @@ test('group invites are owner-only, reusable by existing accounts, and expire', 
 
 test('groups isolate catalogues, reviews, nominations and draws; owners can vote', async () => {
   const f = new GroupsFixture()
-  const { cookie, group } = await f.owner()
+  const { cookie, group, user } = await f.owner()
   const other = (
     await f.call('post', '/groups', cookie, undefined, { name: 'Friends' }).expect(201)
   ).body
@@ -437,6 +441,7 @@ test('groups isolate catalogues, reviews, nominations and draws; owners can vote
       { title: 'Family movie', approval_status: 'approved' },
       TestDatabase.database.client,
     )
+  await f.container.forGroup(group.id).movieService.favorite(user.id, movie.id, true)
   assert.deepEqual((await f.call('get', '/movies', cookie, other.id).expect(200)).body.local, [])
   await f.call('get', `/movies/${movie.id}`, cookie, other.id).expect(404)
   await f.call('put', `/movies/${movie.id}/review`, cookie, other.id, { rating: 4 }).expect(404)
@@ -473,6 +478,7 @@ test('joining after the first response defers voting until the next Madrid week'
       { title: 'Movie', approval_status: 'approved' },
       TestDatabase.database.client,
     )
+  await f.container.forGroup(group.id).movieService.favorite(user.id, movie.id, true)
   const week = '2026-11-16'
   await f
     .call('put', `/rounds/${week}/response`, cookie, group.id, { movieId: movie.id })
@@ -554,7 +560,7 @@ test('app-only invitations remain single-use under concurrent signup', async () 
 
 test('personal favorites and own reviews span groups without exposing other users activity', async () => {
   const f = new GroupsFixture()
-  const { cookie, group } = await f.owner()
+  const { cookie, group, user } = await f.owner()
   const other = (await f.call('post', '/groups', cookie, undefined, { name: 'Friends' })).body
   const movie = await f.container
     .forGroup(group.id)
@@ -562,6 +568,7 @@ test('personal favorites and own reviews span groups without exposing other user
       { title: 'Private favorite', approval_status: 'approved' },
       TestDatabase.database.client,
     )
+  await f.container.forGroup(group.id).reviewService.markWatched(user.id, movie.id)
   await f.call('put', `/movies/${movie.id}/favorite`, cookie, group.id, {}).expect(204)
   await f.call('put', `/movies/${movie.id}/watched`, cookie, group.id, {}).expect(204)
   await f
@@ -656,13 +663,14 @@ test('group migration preserves legacy credentials, sessions, movies, favorites,
 
 test('late joiners have their own review list without changing another members completion', async () => {
   const f = new GroupsFixture()
-  const { cookie, group } = await f.owner()
+  const { cookie, group, user } = await f.owner()
   const movie = await f.container
     .forGroup(group.id)
     .movieRepository.create(
       { title: 'Already reviewed', approval_status: 'approved' },
       TestDatabase.database.client,
     )
+  await f.container.forGroup(group.id).movieService.favorite(user.id, movie.id, true)
   await f
     .call('put', '/rounds/2026-11-16/response', cookie, group.id, { movieId: movie.id })
     .expect(200)
@@ -697,7 +705,7 @@ test('late joiners have their own review list without changing another members c
 
 test('the same TMDB film can be independently eligible and selected in different groups', async () => {
   const f = new GroupsFixture()
-  const { cookie, group } = await f.owner()
+  const { cookie, group, user } = await f.owner()
   const other = (await f.call('post', '/groups', cookie, undefined, { name: 'Friends' })).body
   const movies = await TestDatabase.database.transaction(async (db) => {
     const family = await f.container
@@ -714,6 +722,8 @@ test('the same TMDB film can be independently eligible and selected in different
       )
     return { family, friends }
   })
+  await f.container.forGroup(group.id).movieService.favorite(user.id, movies.family.id, true)
+  await f.container.forGroup(other.id).movieService.favorite(user.id, movies.friends.id, true)
   await f
     .call('put', '/rounds/2026-11-16/response', cookie, group.id, { movieId: movies.family.id })
     .expect(200)

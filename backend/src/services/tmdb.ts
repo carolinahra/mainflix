@@ -133,7 +133,7 @@ export class Tmdb {
     }
   }
   async browse(
-    category: Exclude<MovieCategory, 'recentlyAdded'>,
+    category: MovieCategory,
     language: Language,
     page: number,
     now: Date,

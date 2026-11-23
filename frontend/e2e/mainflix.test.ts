@@ -146,9 +146,10 @@ for (const engine of [chromium, webkit])
         rent: [{ provider_id: 10, provider_name: 'Amazon Video', logo_path: '/seGSXajazLMCKGB5hnRCidtjay1.jpg' }],
       } }))
       await f.login(page, 'friend1')
+      await page.getByRole('button', { name: 'Reviews', exact: true }).click()
+      const title = page.locator('.reviewed-movie').getByRole('button', { name: 'Rate movie', exact: true })
       for (const size of [{ width: 1440, height: 1100 }, { width: 375, height: 812 }, { width: 320, height: 568 }]) {
         await page.setViewportSize(size)
-        const title = page.locator('#movie-catalogue').getByRole('button', { name: 'Interstellar', exact: true })
         await title.scrollIntoViewIfNeeded()
         await title.click()
         const dialog = page.getByRole('dialog', { name: 'Interstellar', exact: true })
@@ -223,7 +224,7 @@ for (const engine of [chromium, webkit])
       }
       backdropPath = '/missing-backdrop.jpg'
       await page.route('**/w1280/missing-backdrop.jpg', route => route.abort())
-      await page.locator('#movie-catalogue').getByRole('button', { name: 'Interstellar', exact: true }).click()
+      await title.click()
       const dialog = page.getByRole('dialog', { name: 'Interstellar', exact: true })
       await page.waitForFunction(() => document.querySelector('.cinema-hero > img')?.getAttribute('src')?.includes('gEU2QniE6E77NI6lCU6MxlNBvIx'))
       assert.match(await dialog.locator('.cinema-hero > img').getAttribute('src'), /gEU2QniE6E77NI6lCU6MxlNBvIx/)
@@ -258,6 +259,14 @@ for (const engine of [chromium, webkit])
       try {
         await f.prepare(engine)
         const page = await f.page()
+        await page.route('**/api/movies?**', async (route) => {
+          if (!new URL(route.request().url()).searchParams.get('q')) return route.fallback()
+          await route.fulfill({ json: {
+            local: [],
+            remote: [{ tmdb_id: 99001, title: 'Smoke Film A', release_year: 2020, overview: '', poster_path: null }],
+            remoteError: null,
+          } })
+        })
         await page.route('**/api/movies/browse?**', async (route) => {
           const popular = new URL(route.request().url()).searchParams.get('category') === 'popular'
           if (popular) await delayed
@@ -282,6 +291,7 @@ for (const engine of [chromium, webkit])
           })
         })
         await f.login(page, 'friend1')
+        await page.getByRole('searchbox').fill('Smoke Film A')
         const title = page
           .locator('#movie-catalogue')
           .getByRole('button', { name: 'Smoke Film A', exact: true })
@@ -347,6 +357,7 @@ for (const engine of [chromium, webkit])
         )
         const page = await f.page()
         await f.login(page, 'friend1')
+        await page.getByRole('button', { name: 'Reviews', exact: true }).click()
         const dialog = page.getByRole('dialog')
         const widths = [
           1440, 1101, 1024, 901, 900, 800, 761, 700, 651, 641, 640, 440, 375, 320, 1440,
@@ -356,10 +367,7 @@ for (const engine of [chromium, webkit])
           ['es', 'Editar reseña'],
         ] as const) {
           await page.getByLabel('Language / Idioma').selectOption(language)
-          await page
-            .locator('#movie-catalogue')
-            .getByRole('button', { name: 'Smoke Film A', exact: true })
-            .click()
+          await page.locator('.reviewed-movie button').click()
           await dialog.getByRole('button', { name: edit, exact: true }).click()
           for (const width of widths) {
             await page.setViewportSize({ width, height: 800 })
@@ -431,18 +439,36 @@ for (const engine of [chromium, webkit])
     const f = new BrowserFixture()
     try {
       await f.prepare(engine)
-      await f.database.client.updateTable('movies')
-        .set({ title: 'A much longer movie title that wraps across several lines on a narrow phone screen' })
-        .where('title', '=', 'Smoke Film B').execute()
+      const privateMovie = await f.database.client.selectFrom('movies').select('id')
+        .where('title', '=', 'Smoke Film B').executeTakeFirstOrThrow()
       const page = await f.page(true)
       const viewer = await f.database.client.selectFrom('users').select('id').where('username', '=', 'friend1').executeTakeFirstOrThrow()
-      const watchedMovie = await f.database.client.selectFrom('movies').select('id').where('title', '=', 'Smoke Film A').executeTakeFirstOrThrow()
+      const watchedMovie = await f.database.client.updateTable('movies').set({ tmdb_id: 99001 })
+        .where('title', '=', 'Smoke Film A').returningAll().executeTakeFirstOrThrow()
       await f.container.reviewService.markWatched(viewer.id, watchedMovie.id)
+      const reviewers = await f.database.client.selectFrom('users').select(['id', 'name'])
+        .where('username', 'in', ['friend2', 'friend3']).execute()
+      for (const reviewer of reviewers) {
+        await f.container.reviewService.markWatched(reviewer.id, watchedMovie.id)
+        await f.container.reviewService.save(reviewer.id, watchedMovie.id, 4, reviewer.name + ' group review')
+      }
+      await page.route('**/api/movies/browse?category=popular&**', (route) => route.fulfill({
+        json: {
+          local: [watchedMovie],
+          remote: [
+            watchedMovie,
+            { tmdb_id: 99002, title: 'A much longer movie title that wraps across several lines on a narrow phone screen', release_year: 2021, overview: '', poster_path: null },
+          ],
+          remoteError: null, page: 1, totalPages: 1,
+        },
+      }))
       await page.route('**/api/movies/browse?category=scienceFiction&**', async route => {
         const pageNumber = Number(new URL(route.request().url()).searchParams.get('page'))
         await route.fulfill({ json: { local: [], remote: [{ tmdb_id: 99100 + pageNumber, title: `Science fiction example ${pageNumber}`, release_year: 2025, overview: '', poster_path: null }], remoteError: null, page: pageNumber, totalPages: 2 } })
       })
       await f.login(page, 'friend1')
+      const privateDetail = await page.request.get(`${f.container.config.origin}/api/movies/${privateMovie.id}`)
+      assert.equal(privateDetail.status(), 404)
       const navigation = page.getByRole('navigation', { name: 'Mobile navigation', exact: true })
       await navigation.getByRole('button', { name: 'Movies', exact: true }).click()
       const card = page.locator('#movie-catalogue .movie-card')
@@ -450,6 +476,7 @@ for (const engine of [chromium, webkit])
       const nominate = card.getByRole('button', { name: 'Nominate', exact: true })
       const favorite = card.getByRole('button', { name: 'Add to favorites', exact: true })
       await nominate.waitFor()
+      assert.equal(await page.locator('#movie-catalogue').getByRole('heading', { name: 'Smoke Film B', exact: true }).count(), 0)
       const nomination = await nominate.boundingBox()
       const favorites = await favorite.boundingBox()
       assert.ok(nomination && favorites)
@@ -459,15 +486,21 @@ for (const engine of [chromium, webkit])
       assert.ok(favorites.height >= 44)
       await favorite.tap()
       await card.getByRole('button', { name: 'Remove from favorites', exact: true }).waitFor()
-      await navigation.getByRole('button', { name: 'Favorites', exact: true }).tap()
-      await page.locator('#profile-favorites').waitFor()
-      const saved = page.locator('main .movie-card').filter({ has: page.getByRole('heading', { name: 'Smoke Film A', exact: true }) })
-      assert.equal(await saved.getByRole('button', { name: 'Remove from favorites', exact: true }).getAttribute('aria-pressed'), 'true')
-      await saved.getByRole('button', { name: 'Remove from favorites', exact: true }).tap()
-      await page.getByText('You have no favorite movies yet.', { exact: true }).waitFor()
+      const reviews = navigation.getByRole('button', { name: 'Reviews', exact: true })
+      assert.equal(await navigation.getByRole('button', { name: 'Favorites', exact: true }).count(), 0)
+      await reviews.tap()
+      await page.getByRole('heading', { name: 'Reviews', exact: true }).waitFor()
+      await page.getByText('Friend2 group review', { exact: true }).waitFor()
+      await page.getByText('Friend3 group review', { exact: true }).waitFor()
+      assert.equal(await reviews.getAttribute('aria-current'), 'page')
       await navigation.getByRole('button', { name: 'Profile', exact: true }).tap()
       await page.locator('.profile-eyebrow').filter({ hasText: 'My profile' }).waitFor()
       assert.equal(await navigation.getByRole('button', { name: 'Profile', exact: true }).getAttribute('aria-current'), 'page')
+      const saved = page.locator('.profile-film').filter({
+        has: page.getByRole('heading', { name: 'Smoke Film A', exact: true }),
+      })
+      await saved.getByRole('button', { name: 'Remove from favorites', exact: true }).tap()
+      await page.getByText('You have no favorite movies yet.', { exact: true }).waitFor()
       await navigation.getByRole('button', { name: 'Round', exact: true }).tap()
       await page.locator('.party-panel').waitFor()
       await page.locator('.profile-menu > summary').tap()
@@ -490,7 +523,9 @@ for (const engine of [chromium, webkit])
       await page.getByRole('button', { name: 'All', exact: true }).tap()
       await page.getByRole('button', { name: 'Categories', exact: true }).tap()
       const categories = page.getByRole('dialog', { name: 'Categories', exact: true })
-      assert.equal(await categories.locator('.category-button').count(), 18)
+      assert.equal(await categories.locator('.category-button').count(), 17)
+      assert.equal(await categories.getByRole('button', { name: 'Recently added', exact: true }).count(), 0)
+      await categories.getByRole('button', { name: 'New releases', exact: true }).waitFor()
       assert.equal(await categories.evaluate(element => element.matches(':modal')), true)
       await categories.getByRole('button', { name: 'Sci-fi', exact: true }).tap()
       await page.getByRole('heading', { name: 'Science fiction example 1', exact: true }).waitFor()
@@ -531,12 +566,13 @@ for (const engine of [chromium, webkit])
       const movie = await f.database.client.insertInto('movies')
         .values({ group_id: group.id, title: 'Toggle film', approval_status: 'approved' })
         .returning('id').executeTakeFirstOrThrow()
+      await f.container.forGroup(group.id).movieService.favorite(ownerUser.id, movie.id, true)
       const page = await f.page(true)
       await f.login(page, 'friend1')
       await f.groupAction(page, 'Switch group')
       await page.getByRole('button', { name: 'Leave test', exact: true }).click()
-      await page.getByRole('button', { name: /^(Catalogue|Movies)$/ }).click()
-      await page.locator('#movie-catalogue').getByRole('button', { name: 'Toggle film', exact: true }).click()
+      await f.profile(page)
+      await page.locator('.profile-film').getByRole('button', { name: 'Toggle film', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await dialog.getByRole('button', { name: "I've watched it", exact: true }).click()
       await dialog.getByRole('button', { name: '+ Write your review', exact: true }).click()
@@ -1217,11 +1253,8 @@ for (const engine of [chromium, webkit]) test(
       await page.getByRole('button', { name: 'Edit profile', exact: true }).click()
       assert.equal(await page.getByLabel('Username', { exact: true }).inputValue(), 'luna')
       assert.equal(await page.locator('.profile-photo > img').getAttribute('src'), avatar)
-      await page.getByRole('button', { name: 'This week', exact: true }).click()
-      await page
-        .locator('#movie-catalogue')
-        .getByRole('button', { name: 'Smoke Film A', exact: true })
-        .click()
+      await page.getByRole('button', { name: 'Reviews', exact: true }).click()
+      await page.locator('.reviewed-movie').getByRole('button', { name: 'Rate movie', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await dialog.getByRole('button', { name: 'Add to favorites', exact: true }).click()
       await dialog.getByRole('button', { name: 'Remove from favorites', exact: true }).waitFor()
@@ -1418,7 +1451,7 @@ test(
 )
 
 test(
-  'discovery shows featured films, paginates genres, switches language and preserves local controls',
+  'discovery shows featured films and new releases, paginates genres and switches language',
   { timeout: 60_000 },
   async () => {
     const f = new BrowserFixture()
@@ -1444,10 +1477,6 @@ test(
           overview: '',
           poster_path: null,
         }))
-        if (category === 'recentlyAdded') {
-          await route.continue()
-          return
-        }
         if (category === 'horror' && pageNumber === 2 && failHorrorPage) {
           failHorrorPage = false
           await route.fulfill({
@@ -1488,9 +1517,14 @@ test(
         1,
       )
       assert.equal(await horror.getByRole('button', { name: 'Load more', exact: true }).count(), 0)
-      const recent = page.getByRole('region', { name: 'Recently added', exact: true })
-      await recent.getByRole('button', { name: 'Smoke Film A', exact: true }).waitFor()
-      await recent.getByRole('button', { name: 'Nominate', exact: true }).first().waitFor()
+      assert.equal(await page.getByRole('heading', { name: 'Recently added', exact: true }).count(), 0)
+      const releases = page.getByRole('region', { name: 'New releases', exact: true })
+      await releases.getByRole('button', { name: 'newReleases page 1', exact: true }).waitFor()
+      assert.equal(
+        await releases.getByRole('button', { name: 'Smoke Film A', exact: true }).count(),
+        0,
+      )
+      await releases.getByRole('button', { name: 'Nominate', exact: true }).first().waitFor()
       await page.getByLabel('Browse by genre', { exact: true }).selectOption('scienceFiction')
       await page.getByRole('heading', { name: 'scienceFiction page 1', exact: true }).waitFor()
       await Promise.all([
@@ -1543,19 +1577,28 @@ test(
       await admin
         .locator('#movie-catalogue')
         .getByRole('button', { name: 'Smoke Film A', exact: true })
-        .waitFor()
+        .waitFor({ state: 'hidden' })
       await admin.locator('.profile-menu > summary').click()
       await admin.getByRole('button', { name: 'Sign out', exact: true }).click()
       await f.login(admin, 'admin@example.com')
-      for (let i = 0; i < 4; i++) await f.login(pages[i]!, `friend${i + 1}@example.com`)
+      const players = await f.database.client.selectFrom('users').select(['id', 'username'])
+        .where('is_admin', '=', false).orderBy('username').execute()
+      const films = await f.database.client.selectFrom('movies').select(['id', 'title']).orderBy('title').execute()
       for (const [i, page] of pages.entries()) {
-        const card = page.locator('#movie-catalogue article').filter({
-          has: page.getByRole('button', {
-            name: i < 2 ? 'Smoke Film A' : 'Smoke Film B',
-            exact: true,
-          }),
-        })
-        await card.getByRole('button', { name: 'Nominate', exact: true }).click()
+        const player = players[i]!
+        const film = films[i < 2 ? 0 : 1]!
+        await f.container.movieService.favorite(player.id, film.id, true)
+        await f.login(page, player.username)
+        await f.profile(page)
+        await page.locator('.profile-film').getByRole('button', { name: film.title, exact: true }).click()
+        const dialog = page.getByRole('dialog')
+        const [nomination] = await Promise.all([
+          page.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/response')),
+          dialog.getByRole('button', { name: 'Nominate', exact: true }).click(),
+        ])
+        assert.equal(nomination.ok(), true)
+        await dialog.getByRole('button', { name: 'Close ×', exact: true }).click()
+        await page.getByRole('button', { name: 'This week', exact: true }).click()
       }
       await admin
         .getByRole('button', { name: "Draw this week's movie", exact: true })
@@ -1889,7 +1932,23 @@ test(
         false,
       )
       await page.screenshot({ path: '/tmp/mainflix-iphone-se-login.png', fullPage: true })
+      const viewer = await f.database.client.selectFrom('users').select('id')
+        .where('username', '=', 'friend1').executeTakeFirstOrThrow()
+      const films = await f.database.client.updateTable('movies').set({ tmdb_id: sql<number>`99000 + id` })
+        .returningAll().execute()
+      for (const film of films) await f.container.movieService.favorite(viewer.id, film.id, true)
+      await page.route('**/api/movies/browse?category=popular&**', (route) => route.fulfill({
+        json: { local: films, remote: films, remoteError: null, page: 1, totalPages: 1 },
+      }))
+      await page.route('**/api/movies?**', async (route) => {
+        const query = new URL(route.request().url()).searchParams.get('q')?.toLowerCase()
+        if (!query) return route.fallback()
+        const response = await route.fetch()
+        const matching = films.filter((film) => film.title.toLowerCase().includes(query))
+        await route.fulfill({ response, json: { ...await response.json(), local: matching, remote: matching, remoteError: null } })
+      })
       await f.login(page, 'friend1@example.com')
+      await page.getByRole('button', { name: 'Movies', exact: true }).tap()
       await page
         .locator('#movie-catalogue')
         .getByRole('button', { name: 'Smoke Film A', exact: true })
@@ -2048,14 +2107,18 @@ test(
         await guest.evaluate(() => document.documentElement.scrollWidth > innerWidth),
         false,
       )
-      const family = await f.database.client.selectFrom('groups').select('id').where('name', '=', '🍿 Family').executeTakeFirstOrThrow()
-      await f.database.client.insertInto('movies').values({ group_id: family.id, title: 'Family only film', approval_status: 'approved' }).execute()
+      const family = await f.database.client.selectFrom('groups').select(['id', 'owner_id']).where('name', '=', '🍿 Family').executeTakeFirstOrThrow()
+      const film = await f.database.client.insertInto('movies').values({ group_id: family.id, title: 'Family only film', approval_status: 'approved' }).returning('id').executeTakeFirstOrThrow()
+      await f.container.forGroup(family.id).movieService.favorite(family.owner_id!, film.id, true)
+      await f.profile(owner)
+      await owner.locator('.profile-film').getByRole('button', { name: 'Family only film', exact: true }).click()
+      const [nomination] = await Promise.all([
+        owner.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/response')),
+        owner.getByRole('dialog').getByRole('button', { name: 'Nominate', exact: true }).click(),
+      ])
+      assert.equal(nomination.ok(), true)
+      await owner.getByRole('dialog').getByRole('button', { name: 'Close ×', exact: true }).click()
       await owner.getByRole('button', { name: 'This week', exact: true }).click()
-      await owner
-        .locator('#movie-catalogue')
-        .getByRole('button', { name: 'Family only film', exact: true })
-        .waitFor()
-      await owner.locator('#movie-catalogue .movie-card').filter({ has: owner.getByRole('button', { name: 'Family only film', exact: true }) }).getByRole('button', { name: 'Nominate', exact: true }).click()
       await f.groupAction(guest, 'Switch group')
       await guest.getByRole('button', { name: 'Friends', exact: true }).click()
       await guest.locator('.group-toolbar strong').getByText('Friends', { exact: true }).waitFor()

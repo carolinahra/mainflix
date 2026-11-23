@@ -11,6 +11,11 @@ export class MovieController {
     private readonly movies: MovieService,
     private readonly reviews: ReviewService,
   ) {
+    this.router.param('id', async (req, res, next) => {
+      const user = Http.user(res)
+      if (!user.is_admin) await this.movies.find(Http.id.parse(req.params.id), undefined, user.id)
+      next()
+    })
     this.router.get('/', this.search.bind(this))
     this.router.post('/', this.submit.bind(this))
     this.router.get('/browse', this.browse.bind(this))
@@ -41,14 +46,23 @@ export class MovieController {
           yearFrom === undefined || yearTo === undefined || yearFrom <= yearTo,
       )
       .parse(req.query)
+    const user = Http.user(res)
     res.json(
-      await this.movies.browse(category, Http.language(req), page, years.yearFrom, years.yearTo),
+      await this.movies.browse(
+        category,
+        Http.language(req),
+        page,
+        years.yearFrom,
+        years.yearTo,
+        user.is_admin ? undefined : user.id,
+      ),
     )
   }
   private async search(req: HttpRequest, res: HttpResponse): Promise<void> {
     const q: string = z.string().trim().max(200).default('').parse(req.query.q)
     const { limit, offset } = Http.pagination.parse(req.query)
-    res.json(await this.movies.search(q, Http.language(req), limit, offset, Http.user(res).id))
+    const user = Http.user(res)
+    res.json(await this.movies.search(q, Http.language(req), limit, offset, user.id, user.is_admin))
   }
   private async submit(req: HttpRequest, res: HttpResponse): Promise<void> {
     if (!Http.user(res).is_admin) throw new ForbiddenException()

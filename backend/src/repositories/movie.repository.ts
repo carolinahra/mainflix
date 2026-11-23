@@ -1,4 +1,4 @@
-import { sql, type Insertable, type Updateable } from 'kysely'
+import { sql, type ExpressionBuilder, type Insertable, type Updateable } from 'kysely'
 import type { Database } from './database.js'
 import type { Connection, Schema } from './schema.js'
 import type { Movie } from '../models/entities.js'
@@ -8,12 +8,54 @@ export class MovieRepository {
     private readonly database: Database,
     readonly groupId: number = 1,
   ) {}
-  async find(id: number, db: Connection = this.database.client): Promise<Movie | undefined> {
+  private personalMovie(eb: ExpressionBuilder<Schema, 'movies'>, userId: number) {
+    return eb.or([
+      eb.exists(
+        eb
+          .selectFrom('favorite_movies')
+          .select('movie_id')
+          .whereRef('movie_id', '=', 'movies.id')
+          .where('user_id', '=', userId),
+      ),
+      eb.exists(
+        eb
+          .selectFrom('user_watched_movies')
+          .select('movie_id')
+          .whereRef('movie_id', '=', 'movies.id')
+          .where('user_id', '=', userId),
+      ),
+      eb.exists(
+        eb
+          .selectFrom('round_responses')
+          .select('movie_id')
+          .whereRef('movie_id', '=', 'movies.id')
+          .where('user_id', '=', userId),
+      ),
+    ])
+  }
+  async find(
+    id: number,
+    db: Connection = this.database.client,
+    viewerId?: number,
+  ): Promise<Movie | undefined> {
     return db
       .selectFrom('movies')
       .where('group_id', '=', this.groupId)
       .selectAll()
       .where('id', '=', id)
+      .$if(viewerId !== undefined, (query) =>
+        query.where((eb) =>
+          eb.or([
+            this.personalMovie(eb, viewerId!),
+            eb.exists(
+              eb.selectFrom('rounds').select('winner_id').whereRef('winner_id', '=', 'movies.id'),
+            ),
+            eb.exists(
+              eb.selectFrom('reviews').select('movie_id').whereRef('movie_id', '=', 'movies.id'),
+            ),
+          ]),
+        ),
+      )
       .executeTakeFirst()
   }
   async favorites(userId: number, limit: number, offset: number): Promise<Movie[]> {
@@ -108,24 +150,16 @@ export class MovieRepository {
       .offset(offset)
       .execute()
   }
-  async recentlyAdded(limit: number, offset: number): Promise<Movie[]> {
-    return this.database.client
-      .selectFrom('movies')
-      .where('group_id', '=', this.groupId)
-      .selectAll()
-      .orderBy('created_at', 'desc')
-      .orderBy('id', 'desc')
-      .limit(limit)
-      .offset(offset)
-      .execute()
-  }
-  async findTmdbIds(ids: number[]): Promise<Movie[]> {
+  async findTmdbIds(ids: number[], viewerId?: number): Promise<Movie[]> {
     if (!ids.length) return []
     return this.database.client
       .selectFrom('movies')
       .where('group_id', '=', this.groupId)
       .selectAll()
       .where('tmdb_id', 'in', ids)
+      .$if(viewerId !== undefined, (query) =>
+        query.where((eb) => this.personalMovie(eb, viewerId!)),
+      )
       .execute()
   }
   async create(

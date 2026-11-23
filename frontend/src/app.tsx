@@ -825,6 +825,10 @@ export class Mainflix extends Component<Props, State> {
         detail: state.detail?.movie.id === movie.id ? { ...state.detail, favorite } : state.detail,
         message: favorite ? 'favoriteAdded' : 'favoriteRemoved',
       }))
+      if (!favorite && movie.tmdb_id) {
+        await this.search(this.state.query)
+        this.loadDiscovery()
+      }
     })
   }
   private favoriteTmdb(tmdbId: number): void {
@@ -898,7 +902,6 @@ export class Mainflix extends Component<Props, State> {
       'comedy',
       'barbie',
       'animation',
-      'recentlyAdded',
       'newReleases',
       'popular',
       this.state.genre,
@@ -1675,9 +1678,13 @@ export class Mainflix extends Component<Props, State> {
         )
         id = movie.id
       }
-      const detail = await this.props.container.api.request<Detail>(
-        `/movies/${id}?language=${this.state.language}`,
-      )
+      const detail = await this.props.container.api
+        .request<Detail>(`/movies/${id}?language=${this.state.language}`)
+        .catch((error: unknown) => {
+          if (!watched && error instanceof ApiException && error.code === 'MOVIE_NOT_FOUND')
+            return null
+          throw error
+        })
       this.setState((state) => ({
         detail,
         remoteDetail: null,
@@ -1687,9 +1694,11 @@ export class Mainflix extends Component<Props, State> {
           ? state.myReviews
           : state.myReviews.filter((entry) => entry.movie.id !== id),
       }))
+      if (!detail) this.closeDetail()
       if (!watched && this.state.tab === 'reviews') await this.loadReviews(false)
       if (!watched && this.state.tab === 'week') await this.refreshRound()
-      if (this.state.tab === 'catalogue') await this.search(this.state.query)
+      if (this.state.tab === 'catalogue' || tmdbId) await this.search(this.state.query)
+      this.loadDiscovery()
     })
   }
   private review(event: FormEvent<HTMLFormElement>): void {
@@ -2025,12 +2034,12 @@ export class Mainflix extends Component<Props, State> {
       >
         <h2 id={`browse-${category}`}>{this.t(category)}</h2>
         <div className="movie-row" role="region" aria-label={this.t(category)} tabIndex={0}>
-          {category === 'recentlyAdded'
-            ? localMovies.map((movie) => this.renderCard(movie))
-            : remoteMovies.map((movie) => {
-                const local = localMovies.find((local) => local.tmdb_id === movie.tmdb_id)
-                return local ? this.renderCard(local) : this.renderRemoteCard(movie)
-              })}
+          {remoteMovies.map((movie) => {
+            const local = localMovies.find((local) => local.tmdb_id === movie.tmdb_id)
+            return local
+              ? this.renderCard(this.state.user?.is_admin ? local : { ...local, ...movie })
+              : this.renderRemoteCard(movie)
+          })}
         </div>
         {(!result || loading) && (
           <p role="status" className="muted">
@@ -2067,7 +2076,6 @@ export class Mainflix extends Component<Props, State> {
       'comedy',
       'barbie',
       'animation',
-      'recentlyAdded',
       'newReleases',
     ]
     const genres: MovieCategory[] = [
@@ -2109,7 +2117,6 @@ export class Mainflix extends Component<Props, State> {
     const categories: MovieCategory[] = [
       'popular',
       'featured',
-      'recentlyAdded',
       'newReleases',
       'christmas',
       'barbie',
@@ -2144,7 +2151,7 @@ export class Mainflix extends Component<Props, State> {
         </button>
         {categories.map((entry, index) => (
           <div key={entry}>
-            {(index === 0 || index === 8) && (
+            {(index === 0 || index === 7) && (
               <p className="category-group">{this.t(index === 0 ? 'discover' : 'genres')}</p>
             )}
             <button
@@ -2153,7 +2160,7 @@ export class Mainflix extends Component<Props, State> {
               onClick={() => selectCategory(entry)}
             >
               <span className="category-symbol" aria-hidden="true">
-                {index < 8 ? '✧' : '·'}
+                {index < 7 ? '✧' : '·'}
               </span>
               {this.t(entry)}
             </button>
@@ -2161,17 +2168,22 @@ export class Mainflix extends Component<Props, State> {
         ))}
       </>
     )
-    const browse = category === 'all' ? undefined : this.state.browse[category]
-    const result = category === 'all' ? this.state.search : browse
+    const useSearch = category === 'all' && (this.state.user?.is_admin || this.state.query.trim())
+    const browseCategory = category === 'all' ? 'popular' : category
+    const browse = this.state.browse[browseCategory]
+    const result = useSearch ? this.state.search : browse
     const local = result?.local ?? []
-    const remote = (result?.remote ?? []).filter(
-      (movie) => !local.some((entry) => entry.tmdb_id === movie.tmdb_id),
-    )
+    const admin = this.state.user?.is_admin
+    const remote = (result?.remote ?? []).flatMap((movie) => {
+      const match = local.find((entry) => entry.tmdb_id === movie.tmdb_id)
+      if (match && admin) return []
+      return [match ? { ...match, ...movie } : movie]
+    })
     const query = this.state.query
       .normalize('NFD')
       .replace(/\p{Diacritic}/gu, '')
       .toLowerCase()
-    const movies = [...local, ...remote].filter((movie) => {
+    const movies = [...(admin ? local : []), ...remote].filter((movie) => {
       const watched = 'id' in movie && (this.state.search.watched ?? []).includes(movie.id)
       return (
         (filter === 'all' || (filter === 'watched') === watched) &&
@@ -2182,7 +2194,7 @@ export class Mainflix extends Component<Props, State> {
           .includes(query)
       )
     })
-    const loading = category !== 'all' && this.state.browseLoading[category]
+    const loading = !useSearch && this.state.browseLoading[browseCategory]
     return (
       <section className="catalogue-layout" aria-labelledby="catalogue-title">
         <aside className="catalogue-sidebar" aria-label={this.t('categories')}>
@@ -2250,7 +2262,7 @@ export class Mainflix extends Component<Props, State> {
           )}
           {result?.remoteError && (
             <p role="status" className="muted">
-              {category === 'all'
+              {useSearch
                 ? this.t(
                     result.remoteError === 'TMDB_NOT_CONFIGURED'
                       ? 'TMDB_NOT_CONFIGURED'
@@ -2278,7 +2290,7 @@ export class Mainflix extends Component<Props, State> {
               </div>
             )}
           </div>
-          {category === 'all'
+          {useSearch
             ? this.state.search.local.length >= 30 && (
                 <button
                   disabled={this.state.busy}
@@ -2291,7 +2303,7 @@ export class Mainflix extends Component<Props, State> {
               (browse.remoteError || browse.page < browse.totalPages) && (
                 <button
                   disabled={loading}
-                  onClick={() => void this.loadBrowse(category, !browse.remoteError)}
+                  onClick={() => void this.loadBrowse(browseCategory, !browse.remoteError)}
                 >
                   {this.t(browse.remoteError ? 'retry' : 'more')}
                 </button>
@@ -2325,6 +2337,8 @@ export class Mainflix extends Component<Props, State> {
     )
   }
   private renderSearch(): ReactNode {
+    const { local, remote } = this.state.search
+    const admin = this.state.user?.is_admin
     return (
       <section className="catalogue-section" id="movie-catalogue">
         <h2>{this.t('search')}</h2>
@@ -2346,11 +2360,11 @@ export class Mainflix extends Component<Props, State> {
             )}
           </p>
         )}
-        <div className="movie-grid">
-          {this.state.search.local.map((movie) => this.renderCard(movie))}
-        </div>
-        {!this.state.search.local.length && <p className="muted">{this.t('noMovies')}</p>}
-        {this.state.search.local.length >= 30 && (
+        <div className="movie-grid">{admin && local.map((movie) => this.renderCard(movie))}</div>
+        {!local.length && !remote.length && (admin || this.state.query.trim()) && (
+          <p className="muted">{this.t('noMovies')}</p>
+        )}
+        {admin && local.length >= 30 && (
           <button
             onClick={(): void => {
               void this.search(this.state.query, true)
@@ -2360,11 +2374,11 @@ export class Mainflix extends Component<Props, State> {
           </button>
         )}
         <div className="movie-grid">
-          {this.state.search.remote
-            .filter(
-              (movie) => !this.state.search.local.some((local) => local.tmdb_id === movie.tmdb_id),
-            )
-            .map((movie) => this.renderRemoteCard(movie))}
+          {remote.map((movie) => {
+            const match = local.find((entry) => entry.tmdb_id === movie.tmdb_id)
+            if (match && admin) return null
+            return match ? this.renderCard({ ...match, ...movie }) : this.renderRemoteCard(movie)
+          })}
         </div>
       </section>
     )
@@ -3827,9 +3841,9 @@ export class Mainflix extends Component<Props, State> {
                 ['catalogue', 'moviesNav', 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],
                 ['week', 'roundNav', 'M12 8v4l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0'],
                 [
-                  'favorites',
-                  'favorites',
-                  'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z',
+                  'reviews',
+                  'reviews',
+                  'M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2ZM7 8h10M7 12h7',
                 ],
                 ['profile', 'profileNav', 'M20 21a8 8 0 0 0-16 0M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0'],
               ] as const

@@ -518,6 +518,8 @@ test('favorites and own reviews stay private and favorites never change nominati
   const cookie = await f.login('firstfav', 'abcdef')
   const other = await f.login('secondfav', 'abcdef')
   const movie = await TestDatabase.movie('Favorite film')
+  await TestDatabase.pool.query('UPDATE movies SET tmdb_id=42 WHERE id=$1', [movie.id])
+  f.container.tmdb = new Tmdb('test', async () => Response.json({ id: 42, title: movie.title }))
   const favorite = (method: 'put' | 'delete', auth = cookie) =>
     request(app)
       [method](`/api/movies/${movie.id}/favorite`)
@@ -525,6 +527,12 @@ test('favorites and own reviews stay private and favorites never change nominati
       .set('Origin', 'http://localhost:5173')
       .send({})
   await request(app).get('/api/movies/favorites').expect(401)
+  await request(app)
+    .post('/api/movies/favorites')
+    .set('Cookie', cookie)
+    .set('Origin', 'http://localhost:5173')
+    .send({ tmdbId: 42 })
+    .expect(200)
   await favorite('put').expect(204)
   await favorite('put').expect(204)
   assert.equal(await f.container.reviewRepository.isWatched(first.id, movie.id), false)
@@ -684,6 +692,7 @@ test('browse requires authentication and validates categories and pages before c
   const cookie = await f.login('browse')
   for (const query of [
     'category=unknown',
+    'category=recentlyAdded',
     'category=popular&page=0',
     'category=popular&page=501',
     'category=popular&page=1.5',
@@ -694,12 +703,80 @@ test('browse requires authentication and validates categories and pages before c
   ])
     await request(app).get(`/api/movies/browse?${query}`).set('Cookie', cookie).expect(400)
   const result = await request(app)
-    .get('/api/movies/browse?category=recentlyAdded&language=es')
+    .get('/api/movies/browse?category=newReleases&language=es')
     .set('Cookie', cookie)
     .expect(200)
   assert.deepEqual(result.body.local, [])
   assert.equal(result.body.page, 1)
-  assert.equal(result.body.remoteError, null)
+  assert.deepEqual(result.body.remote, [])
+  assert.equal(result.body.remoteError, 'TMDB_NOT_CONFIGURED')
+})
+
+test('players can discover TMDB titles without seeing another player’s catalogue records', async () => {
+  const f = new HttpFixture()
+  const { userService, roundService } = f.container
+  const viewer = await userService.create(null, 'viewer', 'Viewer', 'A long test password!')
+  await userService.create(null, 'nominator', 'Nominator', 'A long test password!')
+  await userService.create(null, 'admin', 'Admin', 'A long test password!', true)
+  await TestDatabase.pool.query('UPDATE groups SET owner_id=$1 WHERE id=1', [viewer.id])
+  const metadata = { id: 42, title: 'TMDB film' }
+  f.container.tmdb = new Tmdb('test', async (input) =>
+    new URL(String(input)).pathname === '/3/movie/42'
+      ? Response.json(metadata)
+      : Response.json({ total_pages: 1, results: [metadata] }),
+  )
+  const app = f.container.application.app
+  const playerCookie = await f.login('viewer')
+  const nominatorCookie = await f.login('nominator')
+  const adminCookie = await f.login('admin')
+  const { week } = await roundService.current()
+  const nominate = (cookie: string, body: { tmdbId: number } | { movieId: number }) =>
+    request(app)
+      .put(`/api/rounds/${week}/response`)
+      .set('Cookie', cookie)
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+  const nominated = await nominate(nominatorCookie, { tmdbId: 42 }).expect(200)
+  const id: number = nominated.body.responses[0].movie_id
+  const path = `/api/movies/${id}`
+  await TestDatabase.pool.query("UPDATE movies SET title='Private local title' WHERE id=$1", [id])
+  for (const url of ['/api/movies', '/api/movies?q=TMDB', '/api/movies/browse?category=popular']) {
+    const response = await request(app).get(url).set('Cookie', playerCookie).expect(200)
+    assert.deepEqual(response.body.local, [])
+    if (url !== '/api/movies') assert.equal(response.body.remote[0].title, 'TMDB film')
+  }
+  await request(app).get(path).set('Cookie', playerCookie).expect(404)
+  await request(app).get(`${path}/providers`).set('Cookie', playerCookie).expect(404)
+  for (const [action, body] of [
+    ['favorite', {}],
+    ['watched', {}],
+    ['review', { rating: 4 }],
+  ] as const) {
+    await request(app)
+      .put(`${path}/${action}`)
+      .set('Cookie', playerCookie)
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(404)
+  }
+  await nominate(playerCookie, { movieId: id }).expect(409)
+  await request(app).get(path).set('Cookie', nominatorCookie).expect(200)
+  const admin = await request(app).get('/api/movies').set('Cookie', adminCookie).expect(200)
+  assert.equal(admin.body.local[0].title, 'Private local title')
+  await request(app)
+    .post('/api/movies/favorites')
+    .set('Cookie', playerCookie)
+    .set('Origin', 'http://localhost:5173')
+    .send({ tmdbId: 42 })
+    .expect(200)
+  await request(app).get(path).set('Cookie', playerCookie).expect(200)
+  await request(app)
+    .delete(`${path}/favorite`)
+    .set('Cookie', playerCookie)
+    .set('Origin', 'http://localhost:5173')
+    .send({})
+    .expect(204)
+  await request(app).get(path).set('Cookie', playerCookie).expect(404)
 })
 
 test('six-character passwords work for provisioning, login, password changes, and resets', async () => {
@@ -809,6 +886,7 @@ test('only admins approve movies, reset links use configured origin, and review 
   const friendCookie = await f.login(friend.username)
   const a = await TestDatabase.movie()
   const app = f.container.application.app
+  await f.container.movieService.favorite(friend.id, a.id, true)
   const blocked = await request(app)
     .patch(`/api/admin/movies/${a.id}`)
     .set('Cookie', friendCookie)
@@ -871,6 +949,8 @@ test('four voting profiles and a separate non-voting admin see the same draw and
   const app = f.container.application.app
   const a = await TestDatabase.movie('A')
   const b = await TestDatabase.movie('B')
+  for (const [i, friend] of friends.entries())
+    await f.container.movieService.favorite(friend.id, i < 2 ? a.id : b.id, true)
   const current = await request(app).get('/api/rounds/current').set('Cookie', cookies[0]!)
   assert.equal(current.body.members.length, 4)
   for (const movieId of [a.id, null])
